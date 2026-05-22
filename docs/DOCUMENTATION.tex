@@ -1,0 +1,604 @@
+\documentclass[11pt,a4paper]{article}
+
+% =========================
+% Packages
+% =========================
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[french]{babel}
+\usepackage{geometry}
+\usepackage{array}
+\usepackage{longtable}
+\usepackage{hyperref}
+\usepackage[table]{xcolor}
+\usepackage{listings}
+\usepackage{enumitem}
+
+\geometry{margin=2.2cm}
+
+% =========================
+% Couleurs
+% =========================
+\definecolor{straussblue}{RGB}{36,63,196}
+\definecolor{lightblue}{RGB}{234,245,255}
+\definecolor{lightgray}{RGB}{245,245,245}
+\definecolor{codegray}{RGB}{248,248,248}
+
+% =========================
+% Style code
+% =========================
+\lstset{
+    backgroundcolor=\color{codegray},
+    basicstyle=\ttfamily\small,
+    frame=single,
+    breaklines=true,
+    columns=fullflexible,
+    keepspaces=true,
+    showstringspaces=false
+}
+
+% =========================
+% Infos document
+% =========================
+\title{\textbf{Documentation du projet ARIA ODM Builder}}
+\author{Institut Strauss}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\tableofcontents
+\newpage
+
+% ============================================================
+\section{Objectif du projet}
+% ============================================================
+
+\textbf{ARIA ODM Builder} est une application Streamlit permettant de construire
+des exports patients structurés à partir de fichiers issus d'ARIA/MOSAIQ.
+
+L'application permet notamment de :
+
+\begin{itemize}
+    \item importer un fichier \texttt{traitement\_patient} ;
+    \item importer un fichier \texttt{formulaire\_patient} ;
+    \item sélectionner une cohorte à partir de codes CIM10 ;
+    \item utiliser un fichier de configuration \texttt{mapping.csv} ;
+    \item sélectionner les colonnes formulaire utiles ;
+    \item générer des variables temporelles avant, pendant et après radiothérapie ;
+    \item produire des variables cumulées ;
+    \item contrôler la qualité des jointures et des dates ;
+    \item exporter un fichier final patient ;
+    \item exporter un rapport de preuve ;
+    \item sauvegarder ou réimporter un profil JSON.
+\end{itemize}
+
+% ============================================================
+\section{Structure du projet}
+% ============================================================
+
+La structure recommandée du projet est la suivante :
+
+\begin{lstlisting}
+CODE/
+├── app.py
+├── requirements.txt
+├── SCENARIOS.md
+├── SCENARIOS.tex
+├── inputs/
+│   ├── traitement_patient.csv
+│   └── formulaire_patient.csv
+├── conf/
+│   ├── mapping.csv
+│   └── profiles/
+│       └── profil_exemple.json
+├── pictures/
+│   └── logo_strauss.png
+├── assets/
+└── utils/
+    ├── __init__.py
+    ├── text.py
+    ├── clean.py
+    ├── load.py
+    ├── mapping.py
+    ├── cohort.py
+    ├── temporal.py
+    ├── quality.py
+    ├── export.py
+    ├── profile.py
+    └── display.py
+\end{lstlisting}
+
+% ============================================================
+\section{Rôle des principaux fichiers}
+% ============================================================
+
+\subsection{\texttt{app.py}}
+
+Le fichier \texttt{app.py} est le fichier principal de l'application Streamlit.
+
+Il contient principalement :
+
+\begin{itemize}
+    \item la configuration de l'interface ;
+    \item les onglets de navigation ;
+    \item les boutons ;
+    \item les zones d'import ;
+    \item l'enchaînement général du workflow.
+\end{itemize}
+
+L'application se lance avec :
+
+\begin{lstlisting}
+streamlit run app.py
+\end{lstlisting}
+
+\subsection{\texttt{requirements.txt}}
+
+Le fichier \texttt{requirements.txt} contient les librairies nécessaires au projet.
+
+Exemple :
+
+\begin{lstlisting}
+streamlit
+pandas
+openpyxl
+xlsxwriter
+skrub
+black
+\end{lstlisting}
+
+Installation :
+
+\begin{lstlisting}
+pip install -r requirements.txt
+\end{lstlisting}
+
+\subsection{\texttt{inputs/}}
+
+Le dossier \texttt{inputs/} est destiné aux fichiers d'entrée patients.
+
+Exemple :
+
+\begin{lstlisting}
+inputs/
+├── traitement_patient.csv
+└── formulaire_patient.csv
+\end{lstlisting}
+
+Ces fichiers peuvent ensuite être chargés depuis l'onglet \textbf{Import} de
+l'application.
+
+\subsection{\texttt{conf/}}
+
+Le dossier \texttt{conf/} est destiné aux fichiers de configuration.
+
+Exemple :
+
+\begin{lstlisting}
+conf/
+├── mapping.csv
+└── profiles/
+    └── profil_exemple.json
+\end{lstlisting}
+
+Le fichier \texttt{mapping.csv} remplace l'ancien fichier Excel de règles. Il
+est plus simple à versionner, plus léger et plus compatible entre systèmes.
+
+\subsection{\texttt{pictures/}}
+
+Le dossier \texttt{pictures/} contient le logo ou les images utilisées par
+l'application.
+
+Exemple :
+
+\begin{lstlisting}
+pictures/
+└── logo_strauss.png
+\end{lstlisting}
+
+Le logo est chargé avec \texttt{st.image()} depuis ce dossier.
+
+\subsection{\texttt{utils/}}
+
+Le dossier \texttt{utils/} contient les fonctions utilitaires du projet.
+
+Le fichier \texttt{\_\_init\_\_.py} permet à Python de reconnaître
+\texttt{utils/} comme un package.
+
+\begin{longtable}{|p{0.30\textwidth}|p{0.62\textwidth}|}
+\hline
+\rowcolor{lightblue}
+\textbf{Fichier} & \textbf{Rôle} \\
+\hline
+\endfirsthead
+
+\hline
+\rowcolor{lightblue}
+\textbf{Fichier} & \textbf{Rôle} \\
+\hline
+\endhead
+
+\texttt{utils/text.py}
+&
+Fonctions de normalisation texte, gestion des accents, correction du mojibake,
+recherche flexible de colonnes.
+\\
+\hline
+
+\texttt{utils/clean.py}
+&
+Nettoyage des données, normalisation des clés patient, normalisation des codes
+CIM10, masques de valeurs non vides, nettoyage contrôlé avec skrub.
+\\
+\hline
+
+\texttt{utils/load.py}
+&
+Lecture des fichiers CSV, Excel et ZIP, lecture mémoire-sûre, lecture streaming
+des gros fichiers.
+\\
+\hline
+
+\texttt{utils/mapping.py}
+&
+Gestion du \texttt{mapping.csv}, aide à la sélection CIM10, suggestions de
+colonnes, pertinence des colonnes formulaire.
+\\
+\hline
+
+\texttt{utils/cohort.py}
+&
+Détection des colonnes du fichier traitement, filtrage CIM10, construction de la
+base patient.
+\\
+\hline
+
+\texttt{utils/temporal.py}
+&
+Gestion des fenêtres temporelles, construction du formulaire long, génération
+des variables avant RT, pendant RT, après RT et cumulées.
+\\
+\hline
+
+\texttt{utils/quality.py}
+&
+Création du rapport qualité et du pipeline de preuve.
+\\
+\hline
+
+\texttt{utils/export.py}
+&
+Exports CSV et Excel, fichier final patient, rapport de preuve.
+\\
+\hline
+
+\texttt{utils/profile.py}
+&
+Sauvegarde et chargement des profils JSON.
+\\
+\hline
+
+\texttt{utils/display.py}
+&
+Configuration visuelle, CSS léger, logo et en-tête de l'application.
+\\
+\hline
+
+\end{longtable}
+
+% ============================================================
+\section{Installation}
+% ============================================================
+
+\subsection{Se placer dans le dossier du projet}
+
+Dans un terminal :
+
+\begin{lstlisting}
+cd chemin/vers/ModifiedV1
+\end{lstlisting}
+
+\subsection{Installer les dépendances}
+
+Commande standard :
+
+\begin{lstlisting}
+pip install -r requirements.txt
+\end{lstlisting}
+
+Si la commande \texttt{pip} n'est pas reconnue :
+
+\begin{lstlisting}
+python -m pip install -r requirements.txt
+\end{lstlisting}
+
+Sous Windows avec un chemin Python explicite :
+
+\begin{lstlisting}
+& "C:\Program Files\Python314\python.exe" -m pip install -r requirements.txt
+\end{lstlisting}
+
+% ============================================================
+\section{Lancement de l'application}
+% ============================================================
+
+Commande standard :
+
+\begin{lstlisting}
+streamlit run app.py
+\end{lstlisting}
+
+Commande de secours Windows :
+
+\begin{lstlisting}
+& "C:\Program Files\Python314\python.exe" -m streamlit run app.py
+\end{lstlisting}
+
+Une fois lancée, l'application s'ouvre dans le navigateur.
+
+% ============================================================
+\section{Organisation de l'interface}
+% ============================================================
+
+L'application est organisée en plusieurs onglets :
+
+\begin{center}
+\textbf{Accueil}
+$\rightarrow$
+\textbf{Import}
+$\rightarrow$
+\textbf{Construction}
+$\rightarrow$
+\textbf{Contrôle qualité}
+$\rightarrow$
+\textbf{Sources}
+$\rightarrow$
+\textbf{Profil}
+\end{center}
+
+\subsection{Accueil}
+
+L'onglet \textbf{Accueil} présente le contexte général du projet et le déroulement
+du workflow.
+
+\subsection{Import}
+
+L'onglet \textbf{Import} permet de charger :
+
+\begin{itemize}
+    \item le fichier \texttt{traitement\_patient} ;
+    \item le fichier \texttt{formulaire\_patient} ;
+    \item le fichier \texttt{mapping.csv} ;
+    \item éventuellement un profil JSON.
+\end{itemize}
+
+\subsection{Construction}
+
+L'onglet \textbf{Construction} permet de :
+
+\begin{itemize}
+    \item choisir le mode CIM10 ;
+    \item filtrer la cohorte ;
+    \item sélectionner les colonnes formulaire ;
+    \item définir les temporalités ;
+    \item lancer le calcul avec le bouton \textbf{Construire / recalculer}.
+\end{itemize}
+
+Le bouton \textbf{Construire / recalculer} évite que l'application relance tout le
+pipeline à chaque modification d'un widget.
+
+\subsection{Contrôle qualité}
+
+L'onglet \textbf{Contrôle qualité} affiche les vérifications principales :
+
+\begin{itemize}
+    \item patients traitement retrouvés dans le formulaire ;
+    \item patients cohorte retrouvés dans le formulaire ;
+    \item dates de début et de fin de radiothérapie ;
+    \item valeurs formulaire conservées ;
+    \item doublons ;
+    \item dates invalides.
+\end{itemize}
+
+\subsection{Sources}
+
+L'onglet \textbf{Sources} permet de documenter les colonnes générées et leur
+origine.
+
+\subsection{Profil}
+
+L'onglet \textbf{Profil} permet de sauvegarder ou réimporter une configuration au
+format JSON.
+
+% ============================================================
+\section{Fichiers attendus}
+% ============================================================
+
+\subsection{Fichier \texttt{traitement\_patient}}
+
+Le fichier \texttt{traitement\_patient} doit contenir les informations de
+traitement.
+
+Colonnes importantes attendues ou détectées automatiquement :
+
+\begin{itemize}
+    \item identifiant patient ;
+    \item code CIM10 ;
+    \item date de première fraction ;
+    \item date de dernière fraction ;
+    \item dose ;
+    \item nombre de fractions.
+\end{itemize}
+
+\subsection{Fichier \texttt{formulaire\_patient}}
+
+Le fichier \texttt{formulaire\_patient} doit contenir les formulaires patients.
+
+Colonnes importantes attendues :
+
+\begin{itemize}
+    \item \texttt{pt\_id} ;
+    \item \texttt{date\_event} ;
+    \item colonnes cliniques ou formulaire à exploiter.
+\end{itemize}
+
+\subsection{Fichier \texttt{mapping.csv}}
+
+Le fichier \texttt{mapping.csv} sert à aider la sélection des codes CIM10, des
+localisations et des colonnes formulaire pertinentes.
+
+Il est placé de préférence dans :
+
+\begin{lstlisting}
+conf/mapping.csv
+\end{lstlisting}
+
+Format recommandé :
+
+\begin{lstlisting}
+CIM10;Description;Localisation;Requete;Phase;Commentaire
+C61;Tumeur maligne de la prostate;Prostate;PSA;Cumul;
+C61;Tumeur maligne de la prostate;Prostate;Dysurie;Aigu;
+\end{lstlisting}
+
+% ============================================================
+\section{Profils JSON}
+% ============================================================
+
+Les profils JSON servent à sauvegarder une configuration d'extraction.
+
+Ils peuvent contenir :
+
+\begin{itemize}
+    \item les colonnes sélectionnées ;
+    \item les noms d'export ;
+    \item les temporalités choisies ;
+    \item les paramètres de fenêtre ;
+    \item les choix de construction.
+\end{itemize}
+
+Ils sont placés de préférence dans :
+
+\begin{lstlisting}
+conf/profiles/
+\end{lstlisting}
+
+Exemple :
+
+\begin{lstlisting}
+conf/profiles/profil_prostate.json
+\end{lstlisting}
+
+% ============================================================
+\section{Formatage du code avec Black}
+% ============================================================
+
+Le projet utilise Black pour formater automatiquement le code Python.
+
+Installation :
+
+\begin{lstlisting}
+pip install black
+\end{lstlisting}
+
+Formatage de tout le projet :
+
+\begin{lstlisting}
+python -m black app.py utils
+\end{lstlisting}
+
+Sous Windows avec un chemin Python explicite :
+
+\begin{lstlisting}
+& "C:\Program Files\Python314\python.exe" -m black app.py utils
+\end{lstlisting}
+
+Si Black affiche :
+
+\begin{lstlisting}
+reformatted app.py
+\end{lstlisting}
+
+ou :
+
+\begin{lstlisting}
+All done!
+\end{lstlisting}
+
+le formatage est terminé.
+
+% ============================================================
+\section{Scénarios utilisateur}
+% ============================================================
+
+Le fichier \texttt{SCENARIOS.md} décrit les parcours utilisateurs sous forme de
+tableau :
+
+\begin{center}
+\textbf{Narration utilisateur} \quad | \quad \textbf{Action dans l'application}
+\end{center}
+
+Ces scénarios servent à justifier la structure de l'application.
+
+\begin{longtable}{|p{0.45\textwidth}|p{0.45\textwidth}|}
+\hline
+\rowcolor{lightblue}
+\textbf{Narration utilisateur} & \textbf{Action dans l'application} \\
+\hline
+\endfirsthead
+
+\hline
+\rowcolor{lightblue}
+\textbf{Narration utilisateur} & \textbf{Action dans l'application} \\
+\hline
+\endhead
+
+L'utilisateur arrive sur l'application et veut comprendre l'objectif général.
+&
+Il consulte l'onglet \textbf{Accueil}, qui présente le workflow global.
+\\
+\hline
+
+L'utilisateur doit importer les données patients.
+&
+Il va dans l'onglet \textbf{Import} et charge les fichiers traitement et formulaire.
+\\
+\hline
+
+L'utilisateur veut construire une cohorte CIM10.
+&
+Il va dans \textbf{Construction}, saisit le ou les codes CIM10, puis clique sur
+\textbf{Construire / recalculer}.
+\\
+\hline
+
+L'utilisateur veut vérifier les données avant export.
+&
+Il consulte l'onglet \textbf{Contrôle qualité}.
+\\
+\hline
+
+L'utilisateur veut comprendre l'origine des colonnes générées.
+&
+Il consulte l'onglet \textbf{Sources}.
+\\
+\hline
+
+L'utilisateur veut réutiliser la configuration plus tard.
+&
+Il exporte ou importe un profil JSON depuis l'onglet \textbf{Profil}.
+\\
+\hline
+
+\end{longtable}
+
+Ces scénarios permettent de vérifier que l'application suit un parcours logique
+pour l'utilisateur.
+
+
+
+
+
+\end{document}

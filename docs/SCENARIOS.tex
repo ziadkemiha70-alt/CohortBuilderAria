@@ -1,0 +1,188 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[french]{babel}
+\usepackage{geometry}
+\usepackage{array}
+\usepackage{longtable}
+\usepackage[table]{xcolor}
+\usepackage{hyperref}
+
+\geometry{margin=2.2cm}
+
+\definecolor{straussblue}{RGB}{36,63,196}
+\definecolor{lightblue}{RGB}{234,245,255}
+
+\title{\textbf{Scénarios utilisateur -- ARIA ODM Builder}}
+\author{Projet ARIA ODM Builder}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\section{Objectif du document}
+
+Ce document décrit les principaux scénarios d'utilisation de l'application
+\textbf{ARIA ODM Builder}.  
+L'objectif est de relier chaque besoin utilisateur à une action concrète dans
+l'interface Streamlit.
+
+Ces scénarios permettent de vérifier que la navigation de l'application est
+fluide, que les onglets sont dans un ordre logique, et que les étapes importantes
+ne sont pas cachées dans la barre latérale.
+
+\section{Principe général}
+
+L'application suit le parcours suivant :
+
+\begin{center}
+\textbf{Accueil} $\rightarrow$
+\textbf{Import} $\rightarrow$
+\textbf{Construction} $\rightarrow$
+\textbf{Contrôle qualité} $\rightarrow$
+\textbf{Sources} $\rightarrow$
+\textbf{Profil}
+\end{center}
+
+Chaque onglet correspond à une étape du travail utilisateur.
+
+\section{Scénarios utilisateur}
+
+\renewcommand{\arraystretch}{1.35}
+
+\begin{longtable}{|p{0.45\textwidth}|p{0.45\textwidth}|}
+\hline
+\rowcolor{lightblue}
+\textbf{Narration utilisateur} & \textbf{Action correspondante dans l'application} \\
+\hline
+\endfirsthead
+
+\hline
+\rowcolor{lightblue}
+\textbf{Narration utilisateur} & \textbf{Action correspondante dans l'application} \\
+\hline
+\endhead
+
+L'utilisateur arrive sur l'application et veut comprendre l'objectif général de l'outil.
+&
+Il consulte l'onglet \textbf{Accueil}, qui présente le rôle de l'application, les fichiers attendus et le déroulé global.
+\\
+\hline
+
+L'utilisateur doit importer les données brutes issues d'ARIA/MOSAIQ.
+&
+Il va dans l'onglet \textbf{Import} et charge le fichier \texttt{traitement\_patient}.
+\\
+\hline
+
+L'utilisateur doit importer les données de formulaires patients.
+&
+Il reste dans l'onglet \textbf{Import} et charge le fichier \texttt{formulaire\_patient}.
+\\
+\hline
+
+L'utilisateur dispose d'un fichier de correspondance entre les codes CIM10, les localisations et les colonnes utiles.
+&
+Il importe un fichier \texttt{mapping.csv}, idéalement placé dans le dossier \texttt{conf/}.
+\\
+\hline
+
+L'utilisateur veut réutiliser une configuration déjà préparée lors d'une précédente session.
+&
+Il importe un profil JSON depuis l'onglet \textbf{Import} ou \textbf{Profil}.
+\\
+\hline
+
+L'utilisateur souhaite construire une cohorte à partir d'un ou plusieurs codes CIM10.
+&
+Il va dans l'onglet \textbf{Construction}, choisit le mode CIM10, saisit les codes souhaités, puis clique sur \textbf{Construire / recalculer}.
+\\
+\hline
+
+L'utilisateur veut éviter que l'application recalcule tout à chaque modification d'un paramètre mineur.
+&
+L'application attend une action explicite sur le bouton \textbf{Construire / recalculer} avant de relancer les traitements lourds.
+\\
+\hline
+
+L'utilisateur souhaite sélectionner les colonnes formulaire pertinentes pour son export.
+&
+Dans l'onglet \textbf{Construction}, il utilise les suggestions issues du mapping et ajuste la sélection des colonnes.
+\\
+\hline
+
+L'utilisateur veut définir les temporalités médicales associées aux variables sélectionnées.
+&
+Il coche les blocs temporels nécessaires : \textbf{Cumul}, \textbf{Avant RT}, \textbf{Aigu} et \textbf{Tardif}.
+\\
+\hline
+
+L'utilisateur veut vérifier que les patients du fichier traitement sont bien retrouvés dans le fichier formulaire.
+&
+Il consulte l'onglet \textbf{Contrôle qualité}, qui affiche les contrôles de jointure, les dates manquantes et les doublons.
+\\
+\hline
+
+L'utilisateur veut comprendre d'où viennent les colonnes générées dans l'export final.
+&
+Il consulte l'onglet \textbf{Sources}, qui documente les colonnes d'origine, les transformations et le schéma temporel généré.
+\\
+\hline
+
+L'utilisateur veut exporter un fichier patient final exploitable.
+&
+Il utilise les boutons d'export pour générer le fichier final en CSV ou Excel.
+\\
+\hline
+
+L'utilisateur veut conserver la preuve des choix effectués pendant la construction.
+&
+Il exporte un rapport de preuve contenant les paramètres, la qualité, le mapping et le schéma des colonnes générées.
+\\
+\hline
+
+L'utilisateur veut sauvegarder sa configuration pour la réutiliser plus tard.
+&
+Il va dans l'onglet \textbf{Profil} et télécharge un profil JSON.
+\\
+\hline
+
+L'utilisateur revient plus tard avec de nouveaux fichiers patients mais souhaite garder la même logique d'extraction.
+&
+Il importe les nouveaux fichiers, recharge le profil JSON, puis clique sur \textbf{Construire / recalculer}.
+\\
+\hline
+
+\end{longtable}
+
+\section{Conséquences sur la structure de l'interface}
+
+Les scénarios précédents justifient les choix suivants :
+
+\begin{itemize}
+    \item l'onglet \textbf{Accueil} sert à expliquer le contexte et le flux général ;
+    \item l'onglet \textbf{Import} est une étape dédiée, car l'import des fichiers est obligatoire avant toute construction ;
+    \item l'onglet \textbf{Construction} contient les paramètres de cohorte, de sélection des colonnes et de temporalité ;
+    \item l'onglet \textbf{Contrôle qualité} permet de vérifier la cohérence des données avant export ;
+    \item l'onglet \textbf{Sources} rend l'export traçable ;
+    \item l'onglet \textbf{Profil} permet de sauvegarder et réutiliser une configuration.
+\end{itemize}
+
+\section{Intérêt des scénarios}
+
+Les scénarios permettent de passer d'une simple liste de fonctionnalités à une
+description concrète du parcours utilisateur.
+
+Ils servent à :
+
+\begin{itemize}
+    \item vérifier que l'ordre des onglets est logique ;
+    \item éviter de cacher une étape obligatoire dans la barre latérale ;
+    \item identifier les endroits où un bouton explicite est nécessaire ;
+    \item améliorer la lisibilité de l'application pour un utilisateur non développeur ;
+    \item faciliter les discussions avec les utilisateurs finaux et les encadrants.
+\end{itemize}
+
+\end{document}
