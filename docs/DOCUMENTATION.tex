@@ -1,131 +1,374 @@
 \documentclass[11pt,a4paper]{article}
 
-% =========================
-% Packages
-% =========================
+% ----------------------------
+% Encodage et langue
+% ----------------------------
 \usepackage[utf8]{inputenc}
 \usepackage[T1]{fontenc}
 \usepackage[french]{babel}
-\usepackage{geometry}
-\usepackage{array}
+\usepackage{lmodern}
+\usepackage{microtype}
+
+% ----------------------------
+% Mise en page
+% ----------------------------
+\usepackage[a4paper,margin=2.3cm]{geometry}
+\usepackage{setspace}
+\setstretch{1.08}
+\usepackage{parskip}
+
+% ----------------------------
+% Tableaux, liens, code
+% ----------------------------
+\usepackage{booktabs}
 \usepackage{longtable}
+\usepackage{array}
+\usepackage{xcolor}
 \usepackage{hyperref}
-\usepackage[table]{xcolor}
 \usepackage{listings}
 \usepackage{enumitem}
 
-\geometry{margin=2.2cm}
-
-% =========================
-% Couleurs
-% =========================
-\definecolor{straussblue}{RGB}{36,63,196}
-\definecolor{lightblue}{RGB}{234,245,255}
-\definecolor{lightgray}{RGB}{245,245,245}
-\definecolor{codegray}{RGB}{248,248,248}
-
-% =========================
-% Style code
-% =========================
-\lstset{
-    backgroundcolor=\color{codegray},
-    basicstyle=\ttfamily\small,
-    frame=single,
-    breaklines=true,
-    columns=fullflexible,
-    keepspaces=true,
-    showstringspaces=false
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue,
+  urlcolor=blue,
+  citecolor=blue
 }
 
-% =========================
-% Infos document
-% =========================
-\title{\textbf{Documentation du projet ARIA ODM Builder}}
-\author{Institut Strauss}
-\date{\today}
+\definecolor{CodeBg}{HTML}{F5F7FA}
+\definecolor{FrameGray}{HTML}{D0D5DD}
+\definecolor{TitleBlue}{HTML}{1F5D8C}
+
+\lstdefinestyle{code}{
+  basicstyle=\ttfamily\small,
+  backgroundcolor=\color{CodeBg},
+  frame=single,
+  rulecolor=\color{FrameGray},
+  breaklines=true,
+  columns=fullflexible,
+  keepspaces=true,
+  showstringspaces=false
+}
+\lstset{style=code}
+
+\setlist[itemize]{leftmargin=1.1cm}
+\setlist[enumerate]{leftmargin=1.1cm}
+
+\newcommand{\code}[1]{\texttt{#1}}
+
+% ----------------------------
+% Titre
+% ----------------------------
+\title{\textcolor{TitleBlue}{Documentation utilisateur et technique\\ARIA ODM Builder}}
+\author{}
+\date{26 mai 2026}
 
 \begin{document}
 
 \maketitle
-
 \tableofcontents
 \newpage
 
 % ============================================================
-\section{Objectif du projet}
-% ============================================================
+\section{Objectif du document}
 
-\textbf{ARIA ODM Builder} est une application Streamlit permettant de construire
-des exports patients structurés à partir de fichiers issus d'ARIA/MOSAIQ.
+Ce document décrit l'organisation et l'utilisation du dépôt \code{ARIA ODM Builder}.
 
-L'application permet notamment de :
+Il complète le diaporama placé dans le dossier \code{docs/}. Le diaporama sert de vue d'ensemble rapide et visuelle. La présente documentation sert de référence plus détaillée pour comprendre les fichiers, exécuter le pipeline et maintenir le projet.
+
+\medskip
+
+Le projet vise à construire une chaîne de traitement permettant de transformer des extractions issues d'ARIA en exports patients structurés, contrôlés et traçables pour un usage de recherche clinique.
+
+\subsection*{À retenir}
 
 \begin{itemize}
-    \item importer un fichier \texttt{traitement\_patient} ;
-    \item importer un fichier \texttt{formulaire\_patient} ;
-    \item sélectionner une cohorte à partir de codes CIM10 ;
-    \item utiliser un fichier de configuration \texttt{mapping.csv} ;
-    \item sélectionner les colonnes formulaire utiles ;
-    \item générer des variables temporelles avant, pendant et après radiothérapie ;
-    \item produire des variables cumulées ;
-    \item contrôler la qualité des jointures et des dates ;
-    \item exporter un fichier final patient ;
-    \item exporter un rapport de preuve ;
-    \item sauvegarder ou réimporter un profil JSON.
+  \item le diaporama explique l'architecture générale du dépôt ;
+  \item cette documentation explique plus précisément les dossiers, fichiers et commandes ;
+  \item le workflow complet suit la logique :
 \end{itemize}
 
-% ============================================================
-\section{Structure du projet}
-% ============================================================
-
-La structure recommandée du projet est la suivante :
-
 \begin{lstlisting}
-CODE/
-├── app.py
-├── requirements.txt
-├── SCENARIOS.md
-├── SCENARIOS.tex
-├── inputs/
-│   ├── traitement_patient.csv
-│   └── formulaire_patient.csv
-├── conf/
-│   ├── mapping.csv
-│   └── profiles/
-│       └── profil_exemple.json
-├── pictures/
-│   └── logo_strauss.png
-├── assets/
-└── utils/
-    ├── __init__.py
-    ├── text.py
-    ├── clean.py
-    ├── load.py
-    ├── mapping.py
-    ├── cohort.py
-    ├── temporal.py
-    ├── quality.py
-    ├── export.py
-    ├── profile.py
-    └── display.py
+Extraction SQL
+    -> scripts de préparation
+    -> fichiers préparés
+    -> configuration
+    -> application Streamlit
+    -> contrôles qualité
+    -> export final
 \end{lstlisting}
 
 % ============================================================
-\section{Rôle des principaux fichiers}
-% ============================================================
+\section{Vue d'ensemble du workflow}
 
-\subsection{\texttt{app.py}}
+Le pipeline est organisé en plusieurs étapes successives.
 
-Le fichier \texttt{app.py} est le fichier principal de l'application Streamlit.
+\begin{enumerate}
+  \item Exécuter les requêtes SQL nécessaires à l'extraction des données.
+  \item Préparer ou harmoniser les fichiers avec les scripts du dossier \code{scripts/}.
+  \item Charger les fichiers préparés dans l'application Streamlit.
+  \item Appliquer le mapping et le profil JSON.
+  \item Construire la cohorte.
+  \item Calculer les variables temporelles et les variables d'intérêt.
+  \item Contrôler la qualité des jointures, des dates et des champs exportés.
+  \item Générer un export final et un rapport de contrôle.
+\end{enumerate}
 
-Il contient principalement :
+\begin{lstlisting}
+sql/
+  -> scripts/load_final_all.py
+      -> inputs/ ou fichiers sources préparés
+          -> app.py
+              -> utils/
+                  -> outputs/
+\end{lstlisting}
 
+Cette organisation permet de distinguer clairement :
 \begin{itemize}
-    \item la configuration de l'interface ;
-    \item les onglets de navigation ;
-    \item les boutons ;
-    \item les zones d'import ;
-    \item l'enchaînement général du workflow.
+  \item l'extraction des données ;
+  \item leur préparation ;
+  \item leur traitement dans l'interface ;
+  \item la production d'un résultat contrôlé.
+\end{itemize}
+
+% ============================================================
+\section{Structure recommandée du dépôt}
+
+La structure du dépôt GitHub est la suivante :
+
+\begin{lstlisting}
+ARIA_ODM_Builder/
+|-- README.md
+|-- app.py
+|-- requirements.txt
+|-- .gitignore
+|-- .pre-commit-config.yaml
+|
+|-- conf/
+|   |-- mapping.csv
+|   `-- profiles/
+|       `-- Prostate.json
+|
+|-- docs/
+|   |-- overview_github.pdf
+|   |-- overview_github.tex
+|   |-- documentation_utilisateur.pdf
+|   `-- documentation_utilisateur.tex
+|
+|-- pictures/
+|   `-- logo.png
+|
+|-- scripts/
+|   |-- README.md
+|   |-- load_final_all.py
+|   |-- sys.py
+|   |-- tox.py
+|   `-- trait.py
+|
+|-- sql/
+|   |-- README.md
+|   |-- fichier_A_patient.sql
+|   |-- fichier_B_patient.sql
+|   `-- fichier_C_patient.sql
+|
+|-- utils/
+|   |-- __init__.py
+|   |-- load.py
+|   |-- clean.py
+|   |-- mapping.py
+|   |-- cohort.py
+|   |-- temporal.py
+|   |-- quality.py
+|   |-- export.py
+|   |-- profile.py
+|   |-- display.py
+|   `-- text.py
+|
+`-- samples/
+    |-- csv/
+    `-- xlsx/
+\end{lstlisting}
+
+\subsection*{Remarque}
+
+Les noms \code{fichier\_A\_patient.sql}, \code{fichier\_B\_patient.sql} et \code{fichier\_C\_patient.sql} peuvent être adaptés au dépôt réel. L'important est que leur rôle reste compréhensible :
+\begin{itemize}
+  \item fichier A : extraction principale liée aux traitements ;
+  \item fichier B : extraction liée aux formulaires ou données cliniques longitudinales ;
+  \item fichier C : extraction complémentaire optionnelle.
+\end{itemize}
+
+% ============================================================
+\section{Rôle des dossiers principaux}
+
+\begin{longtable}{p{0.23\linewidth} p{0.70\linewidth}}
+\toprule
+\textbf{Dossier ou fichier} & \textbf{Rôle} \\
+\midrule
+\endhead
+
+\code{README.md} &
+Point d'entrée du dépôt. Il doit expliquer l'objectif du projet, le workflow global, l'installation rapide et renvoyer vers la documentation. \\
+
+\code{app.py} &
+Fichier principal de l'application Streamlit. Il organise l'interface, les onglets, le chargement des fichiers, le recalcul du pipeline et l'export. \\
+
+\code{requirements.txt} &
+Liste les dépendances Python nécessaires pour installer et exécuter l'application. \\
+
+\code{conf/} &
+Contient la configuration du pipeline : mapping CSV et profils JSON. \\
+
+\code{sql/} &
+Contient les requêtes d'extraction SQL utilisées en amont du pipeline Python. \\
+
+\code{scripts/} &
+Contient les scripts de préparation, notamment \code{load\_final\_all.py}, ainsi que des scripts complémentaires. \\
+
+\code{utils/} &
+Contient les modules Python appelés par \code{app.py}. Chaque module correspond à une responsabilité précise : chargement, nettoyage, cohorte, temporalité, qualité, export, etc. \\
+
+\code{docs/} &
+Contient le diaporama GitHub-ready, la documentation utilisateur et les sources \LaTeX. \\
+
+\code{samples/} &
+Contient des fichiers fictifs permettant de tester la mécanique de l'application. \\
+
+\code{pictures/} &
+Contient les images utilisées par l'application ou la documentation, par exemple le logo. \\
+
+\bottomrule
+\end{longtable}
+
+% ============================================================
+\section{Extraction SQL}
+
+\subsection{Rôle du dossier \code{sql/}}
+
+Le dossier \code{sql/} contient les requêtes utilisées pour générer les fichiers d'entrée du pipeline.
+
+Exemple d'organisation :
+
+\begin{lstlisting}
+sql/
+|-- README.md
+|-- fichier_A_patient.sql
+|-- fichier_B_patient.sql
+`-- fichier_C_patient.sql
+\end{lstlisting}
+
+\subsection{Rôle des fichiers SQL}
+
+\begin{longtable}{p{0.30\linewidth} p{0.63\linewidth}}
+\toprule
+\textbf{Fichier} & \textbf{Rôle attendu} \\
+\midrule
+\endhead
+
+\code{fichier\_A\_patient.sql} &
+Extraction principale liée aux informations de traitement. \\
+
+\code{fichier\_B\_patient.sql} &
+Extraction liée aux formulaires cliniques ou aux informations longitudinales. \\
+
+\code{fichier\_C\_patient.sql} &
+Extraction complémentaire optionnelle, par exemple un flux adaptatif ou une source annexe. \\
+
+\code{README.md} &
+Explique le rôle des requêtes et la place du dossier \code{sql/} dans le workflow. \\
+
+\bottomrule
+\end{longtable}
+
+\subsection{Place de SQL dans le workflow}
+
+Les requêtes SQL interviennent au début du pipeline :
+
+\begin{lstlisting}
+Requêtes SQL
+    -> fichiers sources
+    -> scripts de préparation
+    -> application Streamlit
+\end{lstlisting}
+
+Elles servent à produire les fichiers qui seront ensuite préparés, contrôlés et exploités dans l'application.
+
+% ============================================================
+\section{Scripts de préparation}
+
+\subsection{Rôle du dossier \code{scripts/}}
+
+Le dossier \code{scripts/} contient les scripts utilisés après l'extraction SQL et avant l'utilisation de l'application Streamlit.
+
+Organisation recommandée :
+
+\begin{lstlisting}
+scripts/
+|-- README.md
+|-- load_final_all.py
+|-- sys.py
+|-- tox.py
+`-- trait.py
+\end{lstlisting}
+
+\subsection{Script principal : \code{load\_final\_all.py}}
+
+Le fichier \code{load\_final\_all.py} est le script principal de préparation. Il peut être utilisé pour charger, nettoyer, harmoniser ou produire des fichiers intermédiaires avant l'utilisation dans Streamlit.
+
+Son rôle peut être résumé ainsi :
+
+\begin{lstlisting}
+sorties SQL
+    -> load_final_all.py
+        -> nettoyage / harmonisation / préparation
+            -> fichiers prêts pour l'application
+\end{lstlisting}
+
+\subsection{Scripts complémentaires}
+
+\begin{longtable}{p{0.25\linewidth} p{0.68\linewidth}}
+\toprule
+\textbf{Script} & \textbf{Rôle} \\
+\midrule
+\endhead
+
+\code{load\_final\_all.py} &
+Script principal de préparation et d'harmonisation après extraction. \\
+
+\code{trait.py} &
+Script complémentaire lié au traitement des données de traitement. \\
+
+\code{tox.py} &
+Script complémentaire lié aux variables de toxicité, formulaires ou informations cliniques. \\
+
+\code{sys.py} &
+Script utilitaire ou support technique utilisé par les autres scripts. \\
+
+\code{README.md} &
+Explique comment utiliser les scripts et à quel moment ils interviennent dans le workflow. \\
+
+\bottomrule
+\end{longtable}
+
+\subsection*{Important}
+
+Le workflow principal pour l'utilisateur final reste l'application Streamlit \code{app.py}. Les scripts servent à préparer les fichiers en amont ou à conserver une logique de traitement complémentaire.
+
+% ============================================================
+\section{Application Streamlit}
+
+\subsection{Rôle de \code{app.py}}
+
+Le fichier \code{app.py} est le point d'entrée principal de l'application.
+
+Il contient notamment :
+\begin{itemize}
+  \item la configuration de l'interface ;
+  \item les onglets de navigation ;
+  \item les zones d'import ;
+  \item les boutons de recalcul ;
+  \item l'enchaînement général du workflow ;
+  \item l'appel aux modules du dossier \code{utils/}.
 \end{itemize}
 
 L'application se lance avec :
@@ -134,170 +377,233 @@ L'application se lance avec :
 streamlit run app.py
 \end{lstlisting}
 
-\subsection{\texttt{requirements.txt}}
+Une fois lancée, elle s'ouvre dans le navigateur.
 
-Le fichier \texttt{requirements.txt} contient les librairies nécessaires au projet.
+\subsection{Organisation logique de l'interface}
 
-Exemple :
-
-\begin{lstlisting}
-streamlit
-pandas
-openpyxl
-xlsxwriter
-skrub
-black
-\end{lstlisting}
-
-Installation :
+L'interface peut être organisée en plusieurs onglets :
 
 \begin{lstlisting}
-pip install -r requirements.txt
+Accueil -> Import -> Construction -> Controle qualite -> Sources -> Profil
 \end{lstlisting}
 
-\subsection{\texttt{inputs/}}
+\begin{longtable}{p{0.25\linewidth} p{0.68\linewidth}}
+\toprule
+\textbf{Onglet} & \textbf{Rôle} \\
+\midrule
+\endhead
 
-Le dossier \texttt{inputs/} est destiné aux fichiers d'entrée patients.
+Accueil &
+Présente l'objectif de l'application et le workflow général. \\
 
-Exemple :
+Import &
+Permet de charger les fichiers sources, le mapping et éventuellement un profil JSON. \\
 
-\begin{lstlisting}
-inputs/
-├── traitement_patient.csv
-└── formulaire_patient.csv
-\end{lstlisting}
+Construction &
+Permet de choisir les critères de cohorte, les variables et de lancer le calcul. \\
 
-Ces fichiers peuvent ensuite être chargés depuis l'onglet \textbf{Import} de
-l'application.
+Contrôle qualité &
+Affiche les contrôles principaux : jointures, dates, doublons, valeurs manquantes ou incohérentes. \\
 
-\subsection{\texttt{conf/}}
+Sources &
+Documente l'origine des colonnes générées et des variables utilisées. \\
 
-Le dossier \texttt{conf/} est destiné aux fichiers de configuration.
+Profil &
+Permet de sauvegarder ou réimporter une configuration au format JSON. \\
 
-Exemple :
+\bottomrule
+\end{longtable}
+
+% ============================================================
+\section{Configuration du pipeline}
+
+\subsection{Dossier \code{conf/}}
+
+Le dossier \code{conf/} contient les fichiers qui pilotent le comportement du pipeline.
 
 \begin{lstlisting}
 conf/
-├── mapping.csv
-└── profiles/
-    └── profil_exemple.json
+|-- mapping.csv
+`-- profiles/
+    `-- Prostate.json
 \end{lstlisting}
 
-Le fichier \texttt{mapping.csv} remplace l'ancien fichier Excel de règles. Il
-est plus simple à versionner, plus léger et plus compatible entre systèmes.
+\subsection{Fichier \code{mapping.csv}}
 
-\subsection{\texttt{pictures/}}
+Le fichier \code{mapping.csv} associe les colonnes présentes dans les fichiers sources aux variables utilisées dans le pipeline.
 
-Le dossier \texttt{pictures/} contient le logo ou les images utilisées par
-l'application.
+Il peut contenir par exemple :
+\begin{itemize}
+  \item les codes CIM10 ;
+  \item les localisations ;
+  \item les libellés de variables ;
+  \item les requêtes ou champs d'intérêt ;
+  \item les phases temporelles ;
+  \item des commentaires utiles à la sélection.
+\end{itemize}
+
+Format indicatif :
+
+\begin{lstlisting}
+CIM10;Description;Localisation;Requete;Phase;Commentaire
+C61;Tumeur maligne de la prostate;Prostate;PSA;Cumul;
+C61;Tumeur maligne de la prostate;Prostate;Dysurie;Aigu;
+\end{lstlisting}
+
+\subsection{Profils JSON}
+
+Les profils JSON servent à sauvegarder une configuration d'extraction.
+
+Ils peuvent contenir :
+\begin{itemize}
+  \item les colonnes sélectionnées ;
+  \item les critères de cohorte ;
+  \item les temporalités choisies ;
+  \item les paramètres de fenêtre ;
+  \item les choix d'export ;
+  \item les noms de fichiers ou options de traitement.
+\end{itemize}
 
 Exemple :
 
 \begin{lstlisting}
-pictures/
-└── logo_strauss.png
+conf/profiles/Prostate.json
 \end{lstlisting}
 
-Le logo est chargé avec \texttt{st.image()} depuis ce dossier.
+\subsection*{Principe simple}
 
-\subsection{\texttt{utils/}}
+\begin{center}
+\textbf{Le mapping indique où lire les données. Le profil indique quoi sélectionner.}
+\end{center}
 
-Le dossier \texttt{utils/} contient les fonctions utilitaires du projet.
+% ============================================================
+\section{Fichiers d'entrée attendus}
 
-Le fichier \texttt{\_\_init\_\_.py} permet à Python de reconnaître
-\texttt{utils/} comme un package.
+L'application utilise principalement trois types de fichiers sources :
 
-\begin{longtable}{|p{0.30\textwidth}|p{0.62\textwidth}|}
-\hline
-\rowcolor{lightblue}
+\begin{longtable}{p{0.25\linewidth} p{0.68\linewidth}}
+\toprule
 \textbf{Fichier} & \textbf{Rôle} \\
-\hline
-\endfirsthead
-
-\hline
-\rowcolor{lightblue}
-\textbf{Fichier} & \textbf{Rôle} \\
-\hline
+\midrule
 \endhead
 
-\texttt{utils/text.py}
-&
-Fonctions de normalisation texte, gestion des accents, correction du mojibake,
-recherche flexible de colonnes.
-\\
-\hline
+\code{source\_A.csv} &
+Fichier principal de traitement. Il contient les informations nécessaires à la construction de la base patient et de la cohorte. \\
 
-\texttt{utils/clean.py}
-&
-Nettoyage des données, normalisation des clés patient, normalisation des codes
-CIM10, masques de valeurs non vides, nettoyage contrôlé avec skrub.
-\\
-\hline
+\code{source\_B.csv} &
+Fichier de formulaires cliniques ou d'informations longitudinales. \\
 
-\texttt{utils/load.py}
-&
-Lecture des fichiers CSV, Excel et ZIP, lecture mémoire-sûre, lecture streaming
-des gros fichiers.
-\\
-\hline
+\code{source\_C.csv} &
+Fichier complémentaire optionnel, par exemple un flux adaptatif ou une source annexe. \\
 
-\texttt{utils/mapping.py}
-&
-Gestion du \texttt{mapping.csv}, aide à la sélection CIM10, suggestions de
-colonnes, pertinence des colonnes formulaire.
-\\
-\hline
+\code{mapping.csv} &
+Fichier de configuration permettant de relier les colonnes sources aux variables attendues. \\
 
-\texttt{utils/cohort.py}
-&
-Détection des colonnes du fichier traitement, filtrage CIM10, construction de la
-base patient.
-\\
-\hline
+\code{profil JSON} &
+Fichier permettant de sauvegarder et réutiliser une configuration d'extraction. \\
 
-\texttt{utils/temporal.py}
-&
-Gestion des fenêtres temporelles, construction du formulaire long, génération
-des variables avant RT, pendant RT, après RT et cumulées.
-\\
-\hline
+\bottomrule
+\end{longtable}
 
-\texttt{utils/quality.py}
-&
-Création du rapport qualité et du pipeline de preuve.
-\\
-\hline
+\subsection{Colonnes indicatives pour le fichier de traitement}
 
-\texttt{utils/export.py}
-&
-Exports CSV et Excel, fichier final patient, rapport de preuve.
-\\
-\hline
+Le fichier de traitement doit permettre d'identifier les patients et les principales informations de traitement.
 
-\texttt{utils/profile.py}
-&
-Sauvegarde et chargement des profils JSON.
-\\
-\hline
+Colonnes attendues ou détectées selon le mapping :
+\begin{itemize}
+  \item identifiant patient ;
+  \item code diagnostique ou code CIM10 ;
+  \item date de première fraction ;
+  \item date de dernière fraction ;
+  \item dose ;
+  \item nombre de fractions ;
+  \item technique ou machine, si disponible et utile.
+\end{itemize}
 
-\texttt{utils/display.py}
-&
-Configuration visuelle, CSS léger, logo et en-tête de l'application.
-\\
-\hline
+\subsection{Colonnes indicatives pour le fichier de formulaires}
 
+Le fichier de formulaires doit contenir des informations cliniques datées.
+
+Colonnes attendues ou détectées selon le mapping :
+\begin{itemize}
+  \item identifiant patient ;
+  \item date de l'événement ou du formulaire ;
+  \item variables cliniques ou champs de formulaire à exploiter.
+\end{itemize}
+
+% ============================================================
+\section{Modules Python du dossier \code{utils/}}
+
+Le dossier \code{utils/} contient les modules appelés par l'application. Il permet d'éviter que toute la logique soit concentrée dans \code{app.py}.
+
+\begin{longtable}{p{0.25\linewidth} p{0.68\linewidth}}
+\toprule
+\textbf{Module} & \textbf{Rôle} \\
+\midrule
+\endhead
+
+\code{utils/load.py} &
+Chargement des fichiers CSV, Excel ou autres formats acceptés. \\
+
+\code{utils/clean.py} &
+Nettoyage et standardisation des données, notamment les identifiants, dates et valeurs textuelles. \\
+
+\code{utils/mapping.py} &
+Lecture et application du mapping CSV. \\
+
+\code{utils/cohort.py} &
+Construction de la cohorte à partir des critères définis. \\
+
+\code{utils/temporal.py} &
+Gestion des fenêtres temporelles et création de variables avant, pendant ou après traitement. \\
+
+\code{utils/quality.py} &
+Contrôles qualité et création du rapport de preuve. \\
+
+\code{utils/export.py} &
+Génération des exports finaux. \\
+
+\code{utils/profile.py} &
+Sauvegarde et chargement des profils JSON. \\
+
+\code{utils/display.py} &
+Affichage dans Streamlit, mise en forme et éléments visuels. \\
+
+\code{utils/text.py} &
+Fonctions de manipulation et normalisation de texte. \\
+
+\bottomrule
 \end{longtable}
 
 % ============================================================
 \section{Installation}
-% ============================================================
 
 \subsection{Se placer dans le dossier du projet}
 
 Dans un terminal :
 
 \begin{lstlisting}
-cd chemin/vers/ModifiedV1
+cd chemin/vers/ARIA_ODM_Builder
+\end{lstlisting}
+
+\subsection{Créer un environnement Python}
+
+Commande recommandée :
+
+\begin{lstlisting}
+python -m venv .venv
+\end{lstlisting}
+
+Activation sous Windows :
+
+\begin{lstlisting}
+.venv\Scripts\activate
+\end{lstlisting}
+
+Activation sous macOS ou Linux :
+
+\begin{lstlisting}
+source .venv/bin/activate
 \end{lstlisting}
 
 \subsection{Installer les dépendances}
@@ -308,21 +614,14 @@ Commande standard :
 pip install -r requirements.txt
 \end{lstlisting}
 
-Si la commande \texttt{pip} n'est pas reconnue :
+Si \code{pip} n'est pas reconnu :
 
 \begin{lstlisting}
 python -m pip install -r requirements.txt
 \end{lstlisting}
 
-Sous Windows avec un chemin Python explicite :
-
-\begin{lstlisting}
-& "C:\Program Files\Python314\python.exe" -m pip install -r requirements.txt
-\end{lstlisting}
-
 % ============================================================
 \section{Lancement de l'application}
-% ============================================================
 
 Commande standard :
 
@@ -330,275 +629,173 @@ Commande standard :
 streamlit run app.py
 \end{lstlisting}
 
-Commande de secours Windows :
+Commande alternative :
 
 \begin{lstlisting}
-& "C:\Program Files\Python314\python.exe" -m streamlit run app.py
+python -m streamlit run app.py
 \end{lstlisting}
 
-Une fois lancée, l'application s'ouvre dans le navigateur.
+Après exécution, l'application s'ouvre dans le navigateur.
+
+\subsection{Utilisation résumée}
+
+\begin{enumerate}
+  \item Lancer l'application.
+  \item Importer les fichiers sources.
+  \item Vérifier ou charger le mapping.
+  \item Sélectionner un profil JSON ou configurer l'extraction.
+  \item Construire la cohorte.
+  \item Lire le rapport qualité.
+  \item Exporter le résultat.
+\end{enumerate}
 
 % ============================================================
-\section{Organisation de l'interface}
-% ============================================================
+\section{Contrôles qualité}
 
-L'application est organisée en plusieurs onglets :
+Les contrôles qualité servent à vérifier que le pipeline a correctement chargé, relié et transformé les données.
 
-\begin{center}
-\textbf{Accueil}
-$\rightarrow$
-\textbf{Import}
-$\rightarrow$
-\textbf{Construction}
-$\rightarrow$
-\textbf{Contrôle qualité}
-$\rightarrow$
-\textbf{Sources}
-$\rightarrow$
-\textbf{Profil}
-\end{center}
-
-\subsection{Accueil}
-
-L'onglet \textbf{Accueil} présente le contexte général du projet et le déroulement
-du workflow.
-
-\subsection{Import}
-
-L'onglet \textbf{Import} permet de charger :
-
+Ils peuvent porter sur :
 \begin{itemize}
-    \item le fichier \texttt{traitement\_patient} ;
-    \item le fichier \texttt{formulaire\_patient} ;
-    \item le fichier \texttt{mapping.csv} ;
-    \item éventuellement un profil JSON.
+  \item la présence des colonnes attendues ;
+  \item les jointures entre les fichiers ;
+  \item les dates de début et de fin ;
+  \item les doublons ;
+  \item les valeurs manquantes ;
+  \item les valeurs distinctes observées ;
+  \item les variables réellement exportées.
 \end{itemize}
 
-\subsection{Construction}
+\subsection{Rapport de preuve}
 
-L'onglet \textbf{Construction} permet de :
-
+Le rapport de preuve doit aider l'utilisateur à comprendre :
 \begin{itemize}
-    \item choisir le mode CIM10 ;
-    \item filtrer la cohorte ;
-    \item sélectionner les colonnes formulaire ;
-    \item définir les temporalités ;
-    \item lancer le calcul avec le bouton \textbf{Construire / recalculer}.
+  \item quels fichiers ont été chargés ;
+  \item quels paramètres ont été utilisés ;
+  \item quelles transformations ont été appliquées ;
+  \item quels contrôles ont été réalisés ;
+  \item quelles sorties ont été produites.
 \end{itemize}
 
-Le bouton \textbf{Construire / recalculer} évite que l'application relance tout le
-pipeline à chaque modification d'un widget.
-
-\subsection{Contrôle qualité}
-
-L'onglet \textbf{Contrôle qualité} affiche les vérifications principales :
-
-\begin{itemize}
-    \item patients traitement retrouvés dans le formulaire ;
-    \item patients cohorte retrouvés dans le formulaire ;
-    \item dates de début et de fin de radiothérapie ;
-    \item valeurs formulaire conservées ;
-    \item doublons ;
-    \item dates invalides.
-\end{itemize}
-
-\subsection{Sources}
-
-L'onglet \textbf{Sources} permet de documenter les colonnes générées et leur
-origine.
-
-\subsection{Profil}
-
-L'onglet \textbf{Profil} permet de sauvegarder ou réimporter une configuration au
-format JSON.
-
 % ============================================================
-\section{Fichiers attendus}
-% ============================================================
+\section{Sorties produites}
 
-\subsection{Fichier \texttt{traitement\_patient}}
+Après exécution, le pipeline peut produire plusieurs fichiers de sortie.
 
-Le fichier \texttt{traitement\_patient} doit contenir les informations de
-traitement.
-
-Colonnes importantes attendues ou détectées automatiquement :
-
-\begin{itemize}
-    \item identifiant patient ;
-    \item code CIM10 ;
-    \item date de première fraction ;
-    \item date de dernière fraction ;
-    \item dose ;
-    \item nombre de fractions.
-\end{itemize}
-
-\subsection{Fichier \texttt{formulaire\_patient}}
-
-Le fichier \texttt{formulaire\_patient} doit contenir les formulaires patients.
-
-Colonnes importantes attendues :
-
-\begin{itemize}
-    \item \texttt{pt\_id} ;
-    \item \texttt{date\_event} ;
-    \item colonnes cliniques ou formulaire à exploiter.
-\end{itemize}
-
-\subsection{Fichier \texttt{mapping.csv}}
-
-Le fichier \texttt{mapping.csv} sert à aider la sélection des codes CIM10, des
-localisations et des colonnes formulaire pertinentes.
-
-Il est placé de préférence dans :
+Exemple d'organisation :
 
 \begin{lstlisting}
-conf/mapping.csv
+outputs/
+|-- export_patient_structure.csv
+|-- rapport_qualite.html
+`-- trace_pipeline.json
 \end{lstlisting}
 
-Format recommandé :
-
-\begin{lstlisting}
-CIM10;Description;Localisation;Requete;Phase;Commentaire
-C61;Tumeur maligne de la prostate;Prostate;PSA;Cumul;
-C61;Tumeur maligne de la prostate;Prostate;Dysurie;Aigu;
-\end{lstlisting}
-
-% ============================================================
-\section{Profils JSON}
-% ============================================================
-
-Les profils JSON servent à sauvegarder une configuration d'extraction.
-
-Ils peuvent contenir :
-
-\begin{itemize}
-    \item les colonnes sélectionnées ;
-    \item les noms d'export ;
-    \item les temporalités choisies ;
-    \item les paramètres de fenêtre ;
-    \item les choix de construction.
-\end{itemize}
-
-Ils sont placés de préférence dans :
-
-\begin{lstlisting}
-conf/profiles/
-\end{lstlisting}
-
-Exemple :
-
-\begin{lstlisting}
-conf/profiles/profil_prostate.json
-\end{lstlisting}
-
-% ============================================================
-\section{Formatage du code avec Black}
-% ============================================================
-
-Le projet utilise Black pour formater automatiquement le code Python.
-
-Installation :
-
-\begin{lstlisting}
-pip install black
-\end{lstlisting}
-
-Formatage de tout le projet :
-
-\begin{lstlisting}
-python -m black app.py utils
-\end{lstlisting}
-
-Sous Windows avec un chemin Python explicite :
-
-\begin{lstlisting}
-& "C:\Program Files\Python314\python.exe" -m black app.py utils
-\end{lstlisting}
-
-Si Black affiche :
-
-\begin{lstlisting}
-reformatted app.py
-\end{lstlisting}
-
-ou :
-
-\begin{lstlisting}
-All done!
-\end{lstlisting}
-
-le formatage est terminé.
-
-% ============================================================
-\section{Scénarios utilisateur}
-% ============================================================
-
-Le fichier \texttt{SCENARIOS.md} décrit les parcours utilisateurs sous forme de
-tableau :
-
-\begin{center}
-\textbf{Narration utilisateur} \quad | \quad \textbf{Action dans l'application}
-\end{center}
-
-Ces scénarios servent à justifier la structure de l'application.
-
-\begin{longtable}{|p{0.45\textwidth}|p{0.45\textwidth}|}
-\hline
-\rowcolor{lightblue}
-\textbf{Narration utilisateur} & \textbf{Action dans l'application} \\
-\hline
-\endfirsthead
-
-\hline
-\rowcolor{lightblue}
-\textbf{Narration utilisateur} & \textbf{Action dans l'application} \\
-\hline
+\begin{longtable}{p{0.30\linewidth} p{0.63\linewidth}}
+\toprule
+\textbf{Sortie} & \textbf{Rôle} \\
+\midrule
 \endhead
 
-L'utilisateur arrive sur l'application et veut comprendre l'objectif général.
-&
-Il consulte l'onglet \textbf{Accueil}, qui présente le workflow global.
-\\
-\hline
+\code{export\_patient\_structure.csv} &
+Export final contenant les variables patient structurées. \\
 
-L'utilisateur doit importer les données patients.
-&
-Il va dans l'onglet \textbf{Import} et charge les fichiers traitement et formulaire.
-\\
-\hline
+\code{rapport\_qualite.html} &
+Rapport lisible par l'utilisateur, contenant les contrôles qualité. \\
 
-L'utilisateur veut construire une cohorte CIM10.
-&
-Il va dans \textbf{Construction}, saisit le ou les codes CIM10, puis clique sur
-\textbf{Construire / recalculer}.
-\\
-\hline
+\code{trace\_pipeline.json} &
+Trace technique des paramètres, fichiers et choix de configuration utilisés lors de l'exécution. \\
 
-L'utilisateur veut vérifier les données avant export.
-&
-Il consulte l'onglet \textbf{Contrôle qualité}.
-\\
-\hline
-
-L'utilisateur veut comprendre l'origine des colonnes générées.
-&
-Il consulte l'onglet \textbf{Sources}.
-\\
-\hline
-
-L'utilisateur veut réutiliser la configuration plus tard.
-&
-Il exporte ou importe un profil JSON depuis l'onglet \textbf{Profil}.
-\\
-\hline
-
+\bottomrule
 \end{longtable}
 
-Ces scénarios permettent de vérifier que l'application suit un parcours logique
-pour l'utilisateur.
+Les résultats produits lors de l'exécution sont conservés dans l'espace de travail de l'utilisateur.
 
+% ============================================================
+\section{Données fictives de démonstration}
 
+Le dossier \code{samples/} peut contenir des fichiers fictifs permettant de tester l'application.
 
+Organisation possible :
 
+\begin{lstlisting}
+samples/
+|-- csv/
+|   |-- source_A_demo.csv
+|   |-- source_B_demo.csv
+|   `-- source_C_demo.csv
+`-- xlsx/
+    `-- dataset_demo.xlsx
+\end{lstlisting}
+
+\subsection{Utilisation}
+
+\begin{enumerate}
+  \item Copier ou sélectionner les fichiers de démonstration.
+  \item Lancer l'application avec \code{streamlit run app.py}.
+  \item Charger les fichiers depuis l'onglet d'import.
+  \item Choisir le mapping et le profil.
+  \item Recalculer le pipeline.
+  \item Vérifier le rapport qualité et l'export produit.
+\end{enumerate}
+
+Ces fichiers servent uniquement à valider la mécanique de l'application.
+
+% ============================================================
+\section{Documentation dans \code{docs/}}
+
+Le dossier \code{docs/} regroupe la documentation du projet.
+
+Organisation recommandée :
+
+\begin{lstlisting}
+docs/
+|-- overview_github.pdf
+|-- overview_github.tex
+|-- documentation_utilisateur.pdf
+`-- documentation_utilisateur.tex
+\end{lstlisting}
+
+\begin{longtable}{p{0.35\linewidth} p{0.58\linewidth}}
+\toprule
+\textbf{Document} & \textbf{Rôle} \\
+\midrule
+\endhead
+
+\code{overview\_github.pdf} &
+Diaporama visuel à lire en premier pour comprendre rapidement le dépôt et le workflow. \\
+
+\code{overview\_github.tex} &
+Source \LaTeX{} du diaporama. \\
+
+\code{documentation\_utilisateur.pdf} &
+Documentation détaillée pour installer, utiliser et maintenir le projet. \\
+
+\code{documentation\_utilisateur.tex} &
+Source \LaTeX{} de la présente documentation. \\
+
+\bottomrule
+\end{longtable}
+
+% ==================================================
+% ============================================================
+\section{Résumé du workflow recommandé}
+
+\begin{enumerate}
+  \item Lire le \code{README.md}.
+  \item Consulter le diaporama dans \code{docs/}.
+  \item Exécuter les requêtes SQL si les fichiers sources doivent être générés.
+  \item Utiliser \code{scripts/load\_final\_all.py} pour préparer ou harmoniser les fichiers si nécessaire.
+  \item Installer les dépendances avec \code{pip install -r requirements.txt}.
+  \item Lancer l'application avec \code{streamlit run app.py}.
+  \item Charger les fichiers sources.
+  \item Choisir le mapping et le profil.
+  \item Construire la cohorte.
+  \item Vérifier les contrôles qualité.
+  \item Générer l'export final.
+\end{enumerate}
+
+\begin{center}
+\textbf{SQL $\rightarrow$ scripts $\rightarrow$ Streamlit $\rightarrow$ contrôles qualité $\rightarrow$ export}
+\end{center}
 
 \end{document}
