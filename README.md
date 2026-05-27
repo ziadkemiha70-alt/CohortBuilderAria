@@ -11,6 +11,8 @@ Requêtes SQL
     ↓
 Scripts Python de préparation
     ↓
+Fichiers d’entrée CSV/XLSX
+    ↓
 Application Streamlit
     ↓
 Contrôles qualité
