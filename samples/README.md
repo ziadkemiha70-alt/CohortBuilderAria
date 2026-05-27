@@ -21,10 +21,7 @@ Ils permettent de tester :
 samples/
 ├── README.md
 ├── csv/
-│   ├── traitement_patient_demo.csv
-│   ├── formulaire_patient_demo.csv
-│   └── ethos_patient_demo.csv
-└── xlsx/
-    ├── traitement_patient_demo.xlsx
-    ├── formulaire_patient_demo.xlsx
-    └── ethos_patient_demo.xlsx
+   ├── traitement_patient_demo.csv
+   ├── formulaire_patient_demo.csv
+   └── ethos_patient_demo.csv
+
