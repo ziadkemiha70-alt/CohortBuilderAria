@@ -1,0 +1,7 @@
+# Dépendances minimales pour lancer les extractions SQL
+pandas
+pyodbc
+openpyxl
+xlsxwriter
+numba
+numpy
