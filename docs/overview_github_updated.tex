@@ -1,0 +1,579 @@
+\documentclass[10pt,aspectratio=169]{beamer}
+
+% ============================================================
+% Encodage et langue
+% ============================================================
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[french]{babel}
+\usepackage{lmodern}
+\usepackage{microtype}
+
+% ============================================================
+% Packages graphiques
+% ============================================================
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,shapes.geometric}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{xcolor}
+\usepackage{listings}
+
+% ============================================================
+% Style
+% ============================================================
+\definecolor{MainBlue}{HTML}{0B5C8E}
+\definecolor{DarkBlue}{HTML}{16324F}
+\definecolor{LightBox}{HTML}{E9EEF3}
+\definecolor{VeryLight}{HTML}{F6F8FA}
+\definecolor{TextGray}{HTML}{263445}
+
+\setbeamertemplate{navigation symbols}{}
+\setbeamertemplate{footline}[frame number]
+\setbeamercolor{title}{fg=MainBlue}
+\setbeamercolor{frametitle}{fg=MainBlue}
+\setbeamerfont{frametitle}{series=\bfseries,size=\Large}
+\setbeamercolor{normal text}{fg=TextGray}
+
+\setlength{\parskip}{0.25em}
+
+\newcommand{\smallbullet}{\textcolor{MainBlue}{$\blacktriangleright$}\hspace{0.4em}}
+
+\newenvironment{infobox}[1]
+{\begin{beamercolorbox}[rounded=true,shadow=false,wd=\linewidth,sep=0.8em]{block body}
+\textbf{\color{DarkBlue}#1}\par\vspace{0.3em}}
+{\end{beamercolorbox}}
+
+\setbeamercolor{block body}{bg=LightBox,fg=TextGray}
+
+\lstset{
+  basicstyle=\ttfamily\small,
+  columns=fullflexible,
+  keepspaces=true,
+  frame=none,
+  backgroundcolor=\color{VeryLight},
+  xleftmargin=0.5em,
+  xrightmargin=0.5em
+}
+
+% ============================================================
+% Métadonnées
+% ============================================================
+\title{Scripts d'extractions et de traitement de données de vie réelle d'ARIA à des fins de recherche clinique}
+\subtitle{ARIA ODM Builder\\Notice visuelle du dépôt GitHub}
+\author{}
+\date{}
+
+\begin{document}
+
+% ============================================================
+\begin{frame}
+    \titlepage
+    \vspace{-1.2em}
+    \centering
+    \begin{tikzpicture}[node distance=0.25cm, every node/.style={font=\small}]
+        \node[draw=MainBlue, rounded corners, minimum width=2.3cm, minimum height=0.75cm] (sql) {SQL};
+        \node[draw=MainBlue, rounded corners, minimum width=2.3cm, minimum height=0.75cm, right=of sql] (script) {Script principal};
+        \node[draw=MainBlue, rounded corners, minimum width=2.3cm, minimum height=0.75cm, right=of script] (files) {CSV/XLSX};
+        \node[draw=MainBlue, rounded corners, minimum width=2.3cm, minimum height=0.75cm, right=of files] (streamlit) {Streamlit};
+        \node[draw=MainBlue, rounded corners, minimum width=2.3cm, minimum height=0.75cm, right=of streamlit] (export) {Export};
+        \draw[-{Latex}, thick, MainBlue] (sql) -- (script);
+        \draw[-{Latex}, thick, MainBlue] (script) -- (files);
+        \draw[-{Latex}, thick, MainBlue] (files) -- (streamlit);
+        \draw[-{Latex}, thick, MainBlue] (streamlit) -- (export);
+    \end{tikzpicture}
+\end{frame}
+
+% ============================================================
+\begin{frame}{Comment lire ce document}
+\begin{columns}[T,onlytextwidth]
+\begin{column}{0.48\linewidth}
+\begin{infobox}{But du PDF}
+Ce document est conçu pour être lu directement depuis le dossier \texttt{docs/} du dépôt GitHub.
+
+\vspace{0.5em}
+\smallbullet comprendre l'ordre réel du pipeline ;\\
+\smallbullet identifier les fichiers importants ;\\
+\smallbullet savoir quel script sert à quoi ;\\
+\smallbullet comprendre le résultat attendu.
+\end{infobox}
+\end{column}
+
+\begin{column}{0.48\linewidth}
+\begin{infobox}{Public visé}
+Utilisateur non spécialiste du code : médecin, physicien médical, interne, chercheur ou collaborateur projet.
+
+\vspace{0.7em}
+Ce PDF fonctionne comme un README visuel.
+\end{infobox}
+\end{column}
+\end{columns}
+\end{frame}
+
+% ============================================================
+\begin{frame}{Objectif du dépôt}
+\centering
+\Large
+Transformer des extractions ARIA en fichiers patients structurés, contrôlés et exploitables pour la recherche clinique.
+
+\vspace{1.1cm}
+
+\begin{columns}[T,onlytextwidth]
+\begin{column}{0.31\linewidth}
+\begin{infobox}{Extraire}
+Récupérer les informations utiles avec les requêtes SQL.
+\end{infobox}
+\end{column}
+
+\begin{column}{0.31\linewidth}
+\begin{infobox}{Préparer}
+Générer les fichiers d'entrée CSV et Excel avec le script principal.
+\end{infobox}
+\end{column}
+
+\begin{column}{0.31\linewidth}
+\begin{infobox}{Exporter}
+Produire un résultat structuré avec l'application Streamlit.
+\end{infobox}
+\end{column}
+\end{columns}
+\end{frame}
+
+% ============================================================
+\begin{frame}{Chaîne complète du projet}
+\centering
+\begin{tikzpicture}[
+    node distance=0.65cm,
+    step/.style={draw=MainBlue, fill=LightBox, rounded corners, minimum width=2.75cm, minimum height=0.9cm, align=center, font=\small\bfseries}
+]
+\node[step] (sql) {1. \texttt{sql/}};
+\node[step, right=of sql] (load) {2. \texttt{load\_final\_all.py}};
+\node[step, right=of load] (files) {3. CSV/XLSX};
+\node[step, below=1.0cm of files] (conf) {4. \texttt{conf/}};
+\node[step, left=of conf] (app) {5. \texttt{app.py}};
+\node[step, left=of app] (res) {6. Résultats};
+
+\draw[-{Latex}, thick, MainBlue] (sql) -- (load);
+\draw[-{Latex}, thick, MainBlue] (load) -- (files);
+\draw[-{Latex}, thick, MainBlue] (files) -- (conf);
+\draw[-{Latex}, thick, MainBlue] (conf) -- (app);
+\draw[-{Latex}, thick, MainBlue] (app) -- (res);
+\end{tikzpicture}
+
+\vspace{0.85cm}
+\begin{flushleft}
+\smallbullet \texttt{sql/} contient les requêtes d'extraction.\\
+\smallbullet \texttt{scripts/load\_final\_all.py} lance les requêtes et génère les fichiers d'entrée.\\
+\smallbullet \texttt{app.py} charge, contrôle et exporte les données via Streamlit.
+\end{flushleft}
+\end{frame}
+
+% ============================================================
+\begin{frame}[fragile]{Organisation visible sur GitHub}
+\begin{columns}[T,onlytextwidth]
+\begin{column}{0.46\linewidth}
+\begin{lstlisting}
+ARIA_ODM_Builder/
+|-- conf/
+|-- docs/
+|-- pictures/
+|-- samples/
+|-- scripts/
+|-- sql/
+|-- utils/
+|-- README.md
+|-- app.py
+|-- requirements.txt
+`-- requirements_sql.txt
+\end{lstlisting}
+\end{column}
+
+\begin{column}{0.50\linewidth}
+\begin{infobox}{Lecture rapide}
+Le dépôt suit la chaîne : extraction SQL, préparation par scripts, fichiers d'entrée, configuration, application Streamlit et export.
+\end{infobox}
+
+\vspace{0.5cm}
+
+\begin{infobox}{Point d'entrée utilisateur}
+Pour l'utilisation guidée, l'utilisateur lance \texttt{app.py}. Pour la préparation amont, le script principal est dans \texttt{scripts/}.
+\end{infobox}
+\end{column}
+\end{columns}
+\end{frame}
+
+% ============================================================
+\begin{frame}[fragile]{Étape 1 : requêtes SQL dans \texttt{sql/}}
+\begin{columns}[T,onlytextwidth]
+\begin{column}{0.46\linewidth}
+\begin{lstlisting}
+sql/
+|-- README.md
+|-- requete_traitement.sql
+|-- requete_formulaire.sql
+`-- requete_complementaire.sql
+\end{lstlisting}
+\end{column}
+
+\begin{column}{0.50\linewidth}
+\begin{infobox}{Rôle}
+Produire les premières extractions nécessaires au pipeline.
+
+\vspace{0.4em}
+\smallbullet extraction des données de traitement ;\\
+\smallbullet extraction des formulaires cliniques ;\\
+\smallbullet extraction d'une source complémentaire si nécessaire.
+\end{infobox}
+\end{column}
+\end{columns}
+
+\vfill
+\centering
+\textbf{Guide détaillé :} \texttt{docs/guide\_execution\_sql.md}
+\end{frame}
+
+% ============================================================
+\begin{frame}[fragile]{Connexion à la base ARIA : où renseigner les paramètres}
+\begin{columns}[T,onlytextwidth]
+\begin{column}{0.46\linewidth}
+\begin{infobox}{Où modifier ?}
+Les informations de connexion sont à renseigner dans le script principal de préparation :
+
+\vspace{0.4em}
+\texttt{scripts/load\_final\_all.py}
+
+\vspace{0.4em}
+fonction : \texttt{connecter\_bdd()}\\
+chercher : \texttt{pyodbc.connect(...)}
+
+\vspace{0.4em}
+\smallbullet nom du serveur ;\\
+\smallbullet nom de la base ;\\
+\smallbullet mode d'authentification ;\\
+\smallbullet port si nécessaire.
+\end{infobox}
+\end{column}
+
+\begin{column}{0.50\linewidth}
+\begin{infobox}{Exemple à adapter}
+\begin{lstlisting}
+pyodbc.connect(
+"Driver={ODBC Driver 17 for SQL Server};"
+"Server=REMPLIR_ICI_NOM_SERVEUR,PORT;"
+"Database=REMPLIR_ICI_NOM_BASE;"
+"Trusted_Connection=yes;"
+"TrustServerCertificate=yes;"
+)
+\end{lstlisting}
+\end{infobox}
+\end{column}
+\end{columns}
+
+\vfill
+\centering
+\textbf{À retenir :} l'utilisateur complète ce bloc avec les paramètres fournis par son environnement de travail.
+\end{frame}
+
+% ============================================================
+\begin{frame}[fragile]{Étape 2 : préparation dans \texttt{scripts/}}
+\begin{columns}[T,onlytextwidth]
+\begin{column}{0.44\linewidth}
+\begin{lstlisting}
+scripts/
+|-- README.md
+`-- load_final_all.py
+\end{lstlisting}
+\end{column}
+
+\begin{column}{0.52\linewidth}
+\begin{infobox}{Script principal}
+\texttt{load\_final\_all.py} centralise l'extraction amont.
+
+\vspace{0.5em}
+Il exécute les requêtes SQL, récupère les résultats et génère les fichiers d'entrée au format CSV et Excel.
+\end{infobox}
+\end{column}
+\end{columns}
+\end{frame}
+
+% ============================================================
+\begin{frame}{Sortie de la préparation amont}
+\begin{columns}[T,onlytextwidth]
+\begin{column}{0.50\linewidth}
+\centering
+\begin{tikzpicture}[
+    node distance=0.42cm,
+    box/.style={draw=MainBlue, fill=LightBox, rounded corners, text width=3.8cm, align=center, minimum height=0.72cm}
+]
+\node[box] (sql) {Requêtes SQL};
+\node[box, below=of sql] (load) {\texttt{load\_final\_all.py}};
+\node[box, below=of load] (csv) {Fichiers CSV};
+\node[box, below=of csv] (xlsx) {Fichiers Excel};
+\node[box, below=of xlsx] (app) {Chargement dans Streamlit};
+
+\draw[-{Latex}, thick, MainBlue] (sql) -- (load);
+\draw[-{Latex}, thick, MainBlue] (load) -- (csv);
+\draw[-{Latex}, thick, MainBlue] (csv) -- (xlsx);
+\draw[-{Latex}, thick, MainBlue] (xlsx) -- (app);
+\end{tikzpicture}
+\end{column}
+
+\begin{column}{0.46\linewidth}
+\begin{infobox}{Fichiers obtenus}
+Le script produit les fichiers nécessaires au workflow Streamlit dans deux formats : \texttt{.csv} et \texttt{.xlsx}.
+\end{infobox}
+
+\vspace{0.6cm}
+
+\begin{infobox}{Intérêt}
+Cette étape évite de mélanger extraction, génération des fichiers d'entrée et utilisation interactive.
+\end{infobox}
+\end{column}
+\end{columns}
+\end{frame}
+
+% ============================================================
+\begin{frame}[fragile]{Étape 3 : fichiers d'entrée pour Streamlit}
+\begin{columns}[T,onlytextwidth]
+\begin{column}{0.48\linewidth}
+\begin{infobox}{Cas réel : fichiers générés}
+\begin{lstlisting}
+traitement_patient.csv / .xlsx
+formulaire_patient.csv / .xlsx
+ethos_patient.csv / .xlsx
+\end{lstlisting}
+\end{infobox}
+\end{column}
+
+\begin{column}{0.48\linewidth}
+\begin{infobox}{Cas démo : fichiers fictifs}
+\begin{lstlisting}
+samples/
+|-- csv/
+`-- xlsx/
+\end{lstlisting}
+Les fichiers de démonstration permettent de tester l'application sans extraction SQL.
+\end{infobox}
+\end{column}
+\end{columns}
+
+\vfill
+\centering
+\textbf{Ces fichiers sont ceux que l'utilisateur charge ensuite dans l'interface Streamlit.}
+\end{frame}
+
+% ============================================================
+\begin{frame}{Étape 4 : configuration dans \texttt{conf/}}
+\begin{columns}[T,onlytextwidth]
+\begin{column}{0.48\linewidth}
+\begin{infobox}{\texttt{mapping.csv}}
+Indique quelle colonne source correspond à quelle variable utilisée dans le pipeline.
+
+\vspace{0.4em}
+Exemples : identifiant patient, date, dose, diagnostic, fractionnement.
+\end{infobox}
+\end{column}
+
+\begin{column}{0.48\linewidth}
+\begin{infobox}{\texttt{profiles/*.json}}
+Décrit un scénario d'extraction : pathologie, critères, variables attendues et règles de sélection.
+
+\vspace{0.4em}
+Exemples : codes CIM10, variables cliniques, règles de cohorte.
+\end{infobox}
+\end{column}
+\end{columns}
+
+\vfill
+\centering
+\textbf{Le mapping dit où lire. Le profil dit quoi sélectionner.}
+\end{frame}
+
+% ============================================================
+\begin{frame}[fragile]{Installer le projet}
+\begin{columns}[T,onlytextwidth]
+\begin{column}{0.48\linewidth}
+\begin{infobox}{Application Streamlit}
+\begin{lstlisting}
+python -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt
+\end{lstlisting}
+\texttt{requirements.txt} contient les dépendances de l'application.
+\end{infobox}
+\end{column}
+
+\begin{column}{0.48\linewidth}
+\begin{infobox}{Extraction SQL}
+\begin{lstlisting}
+python -m venv .venv_sql
+.venv_sql\Scripts\activate
+pip install -r requirements_sql.txt
+\end{lstlisting}
+\texttt{requirements\_sql.txt} contient les dépendances minimales pour l'extraction SQL.
+\end{infobox}
+\end{column}
+\end{columns}
+\end{frame}
+
+% ============================================================
+\begin{frame}[fragile]{Étape 5 : lancer l'application Streamlit}
+\begin{columns}[T,onlytextwidth]
+\begin{column}{0.46\linewidth}
+\begin{infobox}{Commande}
+\begin{lstlisting}
+python -m streamlit cache clear
+python -m streamlit run app.py
+\end{lstlisting}
+
+\smallbullet l'application s'ouvre dans le navigateur ;\\
+\smallbullet l'utilisateur charge les fichiers préparés ;\\
+\smallbullet le pipeline peut être recalculé depuis l'interface.
+\end{infobox}
+\end{column}
+
+\begin{column}{0.50\linewidth}
+\centering
+\begin{tikzpicture}[
+    node distance=0.7cm,
+    box/.style={draw=MainBlue, fill=LightBox, rounded corners, text width=4.2cm, align=center, minimum height=0.85cm}
+]
+\node[box] (terminal) {Terminal\\\texttt{python -m streamlit run app.py}};
+\node[box, below=of terminal] (browser) {Interface dans le navigateur};
+\draw[-{Latex}, thick, MainBlue] (terminal) -- (browser);
+\end{tikzpicture}
+\end{column}
+\end{columns}
+\end{frame}
+
+% ============================================================
+\begin{frame}{Ce que fait \texttt{app.py}}
+\centering
+\begin{tikzpicture}[
+    node distance=0.35cm,
+    box/.style={draw=MainBlue, fill=LightBox, rounded corners, minimum width=1.9cm, minimum height=0.75cm, align=center, font=\small}
+]
+\node[box] (a) {Charger};
+\node[box, right=of a] (b) {Mapper};
+\node[box, right=of b] (c) {Filtrer};
+\node[box, right=of c] (d) {Joindre};
+\node[box, right=of d] (e) {Contrôler};
+\node[box, right=of e] (f) {Exporter};
+
+\foreach \x/\y in {a/b,b/c,c/d,d/e,e/f}
+    \draw[-{Latex}, thick, MainBlue] (\x) -- (\y);
+\end{tikzpicture}
+
+\vspace{1cm}
+\begin{flushleft}
+\smallbullet interface principale du dépôt ;\\
+\smallbullet guide l'utilisateur étape par étape ;\\
+\smallbullet s'appuie sur les modules du dossier \texttt{utils/}.
+\end{flushleft}
+
+\vfill
+\begin{infobox}{À retenir}
+L'utilisateur standard lance \texttt{app.py} après la préparation des fichiers d'entrée.
+\end{infobox}
+\end{frame}
+
+% ============================================================
+\begin{frame}{Modules Python utilisés par l'application : \texttt{utils/}}
+\small
+\begin{tabular}{>{\ttfamily}p{0.22\linewidth} p{0.70\linewidth}}
+\toprule
+\textbf{Module} & \textbf{Rôle}\\
+\midrule
+load.py & charger les fichiers d'entrée\\
+clean.py & nettoyer et standardiser les données utiles\\
+mapping.py & appliquer les correspondances de variables\\
+cohort.py & construire la cohorte selon les critères choisis\\
+temporal.py & calculer les variables liées au temps\\
+quality.py & produire les contrôles qualité\\
+export.py & générer les fichiers de sortie\\
+profile.py & lire et valider les profils JSON\\
+display.py & afficher les résultats dans Streamlit\\
+text.py & gérer les textes, libellés et messages\\
+\bottomrule
+\end{tabular}
+\end{frame}
+
+% ============================================================
+\begin{frame}{Documentation disponible dans \texttt{docs/}}
+\small
+\begin{tabular}{>{\ttfamily}p{0.34\linewidth} p{0.58\linewidth}}
+\toprule
+\textbf{Fichier} & \textbf{Rôle}\\
+\midrule
+overview\_github.pdf & notice visuelle du dépôt GitHub\\
+overview\_github.tex & source LaTeX modifiable de cette notice\\
+documentation.tex & documentation utilisateur détaillée\\
+guide\_execution\_sql.md & guide pour lancer les extractions SQL\\
+scenarios.md & scénarios d'utilisation de l'application\\
+scenarios.tex & source LaTeX des scénarios\\
+README.md & sommaire du dossier \texttt{docs/}\\
+\bottomrule
+\end{tabular}
+\end{frame}
+
+% ============================================================
+\begin{frame}{Résultats attendus après exécution}
+\begin{columns}[T,onlytextwidth]
+\begin{column}{0.46\linewidth}
+\begin{infobox}{Fichiers produits}
+\smallbullet export patient structuré ;\\
+\smallbullet rapport qualité ;\\
+\smallbullet trace d'exécution.
+\end{infobox}
+\end{column}
+
+\begin{column}{0.50\linewidth}
+\begin{infobox}{Utilisation}
+Ces sorties servent de base au contrôle, à la relecture puis aux analyses de recherche clinique.
+
+\vspace{0.4em}
+\smallbullet vérifier la cohorte ;\\
+\smallbullet relire les alertes qualité ;\\
+\smallbullet exploiter l'export final.
+\end{infobox}
+\end{column}
+\end{columns}
+
+\vfill
+\centering
+\textbf{L'utilisateur sait alors quels fichiers ont été utilisés et quel résultat a été généré.}
+\end{frame}
+
+% ============================================================
+\begin{frame}{Workflow résumé}
+\centering
+\begin{tikzpicture}[
+    node distance=0.35cm,
+    box/.style={draw=MainBlue, fill=LightBox, rounded corners, minimum width=1.85cm, minimum height=0.75cm, align=center, font=\small}
+]
+\node[box] (s1) {1. SQL};
+\node[box, right=of s1] (s2) {2. Script};
+\node[box, right=of s2] (s3) {3. CSV/XLSX};
+\node[box, right=of s3] (s4) {4. Profil};
+\node[box, right=of s4] (s5) {5. App};
+\node[box, right=of s5] (s6) {6. Export};
+
+\foreach \x/\y in {s1/s2,s2/s3,s3/s4,s4/s5,s5/s6}
+    \draw[-{Latex}, thick, MainBlue] (\x) -- (\y);
+\end{tikzpicture}
+
+\vspace{0.8cm}
+
+\begin{flushleft}
+\begin{enumerate}
+    \item Exécuter les requêtes du dossier \texttt{sql/}.
+    \item Générer les fichiers avec \texttt{scripts/load\_final\_all.py}.
+    \item Charger les fichiers CSV/XLSX dans Streamlit ou utiliser \texttt{samples/}.
+    \item Choisir le mapping et le profil dans \texttt{conf/}.
+    \item Lancer les contrôles qualité.
+    \item Générer l'export final.
+\end{enumerate}
+\end{flushleft}
+\end{frame}
+
+\end{document}
