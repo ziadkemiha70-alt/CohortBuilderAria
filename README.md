@@ -26,7 +26,7 @@ Exports structurés et traçables
 
 Deux usages sont possibles :
 
-- **avec accès à une base ARIA/MOSAIQ** : génération des fichiers patients par extraction SQL ;
+- **avec accès à une base ARIA** : génération des fichiers patients par extraction SQL ;
 - **sans accès immédiat à la base** : test de l’application avec les fichiers fictifs du dossier `samples/`.
 
 ---
