@@ -144,20 +144,7 @@ Guide détaillé : [`docs/guide_execution_sql.md`](docs/guide_execution_sql.md)
 
 ---
 
-## 6. Lancer l’application Streamlit
-
-Depuis la racine du projet, avec l’environnement Streamlit activé :
-
-```powershell
-python -m streamlit cache clear
-python -m streamlit run app.py
-```
-
-L’application s’ouvre ensuite dans le navigateur.
-
----
-
-## 7. Installation de l’application Streamlit
+## 6. Installation de l’application Streamlit
 
 Depuis la racine du projet, créer un environnement virtuel :
 
@@ -183,6 +170,19 @@ Si PowerShell bloque l’activation de l’environnement, exécuter temporaireme
 ```powershell
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 ```
+
+---
+
+## 7. Lancer l’application Streamlit
+
+Depuis la racine du projet, avec l’environnement Streamlit activé :
+
+```powershell
+python -m streamlit cache clear
+python -m streamlit run app.py
+```
+
+L’application s’ouvre ensuite dans le navigateur.
 
 ---
 
