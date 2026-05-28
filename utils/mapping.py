@@ -3,7 +3,7 @@
 
 import io
 import re
-from typing import Any, Iterable, List, Optional, Tuple
+from typing import Any, Iterable, List, Optional, Tuple, Dict
 
 import pandas as pd
 import streamlit as st
