@@ -62,36 +62,8 @@ ARIA_ODM_Builder/
 
 ---
 
-## 3. Installation de l’application Streamlit
 
-Depuis la racine du projet, créer un environnement virtuel :
-
-```powershell
-python -m venv .venv
-```
-
-Activer l’environnement :
-
-```powershell
-.\.venv\Scripts\Activate.ps1
-```
-
-Installer les dépendances :
-
-```powershell
-python -m pip install --upgrade pip
-python -m pip install -r requirements.txt
-```
-
-Si PowerShell bloque l’activation de l’environnement, exécuter temporairement :
-
-```powershell
-Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
-```
-
----
-
-## 4. Installation pour les extractions SQL
+## 3. Installation pour les extractions SQL
 
 Les extractions SQL peuvent utiliser un environnement séparé.
 
@@ -116,7 +88,7 @@ python -m pip install -r requirements_sql.txt
 
 ---
 
-## 5. Préparer la connexion SQL
+## 4. Préparer la connexion SQL
 
 Avant de lancer l’extraction, vérifier le pilote SQL Server disponible :
 
@@ -145,7 +117,7 @@ self.connexion = pyodbc.connect(
 
 ---
 
-## 6. Lancer les extractions SQL
+## 5. Lancer les extractions SQL
 
 Depuis le dossier contenant le script principal, lancer :
 
@@ -172,7 +144,7 @@ Guide détaillé : [`docs/guide_execution_sql.md`](docs/guide_execution_sql.md)
 
 ---
 
-## 7. Lancer l’application Streamlit
+## 6. Lancer l’application Streamlit
 
 Depuis la racine du projet, avec l’environnement Streamlit activé :
 
@@ -182,6 +154,35 @@ python -m streamlit run app.py
 ```
 
 L’application s’ouvre ensuite dans le navigateur.
+
+---
+
+## 7. Installation de l’application Streamlit
+
+Depuis la racine du projet, créer un environnement virtuel :
+
+```powershell
+python -m venv .venv
+```
+
+Activer l’environnement :
+
+```powershell
+.\.venv\Scripts\Activate.ps1
+```
+
+Installer les dépendances :
+
+```powershell
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+```
+
+Si PowerShell bloque l’activation de l’environnement, exécuter temporairement :
+
+```powershell
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+```
 
 ---
 
