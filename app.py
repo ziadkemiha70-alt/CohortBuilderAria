@@ -51,8 +51,7 @@ with st.sidebar:
 with tab_import:
     st.subheader("Import des fichiers")
     st.markdown(
-        '<div class="smallnote">Charge les fichiers depuis <code>inputs/</code> et <code>conf/</code>. '
-        "Le mapping attendu est maintenant <code>mapping.csv</code>, avec compatibilité Excel conservée.</div>",
+        '<div class="smallnote">Charger les fichiers depuis <code>inputs/</code> et <code>conf/</code>. ',
         unsafe_allow_html=True,
     )
     with st.expander("Description des fichiers d’entrée", expanded=False):
@@ -130,7 +129,7 @@ with tab_import:
 if not treatment_file or not form_file:
     with tab_home:
         st.info(
-            "Charge `traitement_patient.csv` et `formulaire_patient.csv/.zip` dans l'onglet Import pour démarrer."
+            "Prendre sous la main les fichiers d'entrées désirés puis de déplacer dans l'onglet Import pour démarrer."
         )
     st.stop()
 
@@ -1266,7 +1265,7 @@ with tab_profile:
         st.success("Profil JSON chargé comme base modifiable.")
         st.markdown(
             "Le profil préremplit les colonnes et les phases dans l'onglet Construction, "
-            "mais on peux toujour ajouter/enlever des colonnes à la main. Après export, le bouton `Sauvegarder profil JSON` génère un nouveau profil mis à jour."
+            "Il y a toujours possibilité d'ajouter des colonnes à la main. Après export, le bouton `Sauvegarder profil JSON` génère un nouveau profil mis à jour."
         )
         st.dataframe(profile_config, width="stretch", hide_index=True)
     elif st.session_state.last_result is not None:
