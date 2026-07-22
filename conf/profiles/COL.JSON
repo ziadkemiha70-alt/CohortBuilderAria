@@ -1,0 +1,1284 @@
+{
+  "version": "ARIA_ODM_profile_v1",
+  "created_at": "2026-07-22T14:23:40",
+  "profile_name": "COL - regle(3) strict, décodage rigoureux",
+  "description": "Items et temporalités strictement issus de regle(3).xlsx. Décodage construit à partir des valeurs brutes de formulaire_patient.xlsx sans clonage par longueur.",
+  "settings": {
+    "export_zone": "COL",
+    "localisation": "COL",
+    "mode_cim10": "CIM10 pour le traitement considéré",
+    "cim10": "C53, D06",
+    "dose_non_nulle": true,
+    "delay_reference": "Début RT / startD",
+    "treatment_cols": [
+      "pt_id",
+      "PatientId",
+      "PatientSer",
+      "CourseSer",
+      "PlanSetupSer",
+      "RTPlanSer",
+      "TreatmentPhaseSer",
+      "PrescriptionSer",
+      "FirstName",
+      "LastName",
+      "Sex",
+      "Naissance",
+      "PatientStatus",
+      "DeathDate",
+      "MobilePhone",
+      "Citizenship",
+      "Age",
+      "AgePrmFract",
+      "CourseId",
+      "PlanSetupId",
+      "DiagnosisCode",
+      "DiagPrimaire",
+      "laterality_desc",
+      "DiagnosisType",
+      "ICD",
+      "cncr_stage",
+      "pt_dx_id",
+      "prmy_dx_id",
+      "stg_crit_desc",
+      "crit_desc",
+      "date_staged",
+      "Stade_Tumoral",
+      "Stade_Nodal",
+      "Stade_Metastase",
+      "Facteur_HER2",
+      "Recepteur_Estrogene",
+      "Recepteur_Progesterone",
+      "Score_Oncologique",
+      "Age_Diagnostic",
+      "Niveau_PSA",
+      "Grade_Histologique",
+      "Autres",
+      "morph_cd",
+      "tumor_size",
+      "necrosis_status_typ",
+      "ki67_status_typ",
+      "ki67_pct",
+      "varis_histology_cd",
+      "invasive_ind",
+      "gleason_prmy",
+      "gleason_scndy",
+      "gleason_tertiary_typ",
+      "gleason_total",
+      "multifocal_ind",
+      "pathology_cmt",
+      "microcalc_status_typ",
+      "ece_status_typ",
+      "nodes_cytokeratin_pos",
+      "pr_status",
+      "er_status",
+      "nodes_examined",
+      "her2neu_status2_typ",
+      "in_situ_cncr_ind",
+      "HistologyTableName",
+      "Description",
+      "Site",
+      "PlannedFrac",
+      "NbFractionsEffectués",
+      "NbFractionsRestantes",
+      "DosePerFraction",
+      "DosesTotal2",
+      "DoseEffectuée2",
+      "PremiereFractionChamp",
+      "DerniereFractionChamp",
+      "Energy",
+      "RadiationType",
+      "TechniqueId",
+      "HstryUserName",
+      "NomMachine",
+      "Model",
+      "PrescriptionName",
+      "VolumeType",
+      "DicomType",
+      "PrescriptionTemplateName",
+      "Modes",
+      "Frequences",
+      "Energies",
+      "Technique",
+      "PhaseType",
+      "Notes",
+      "Status"
+    ],
+    "avant_weeks": [
+      71,
+      48,
+      41,
+      40,
+      37,
+      29,
+      13,
+      10,
+      8,
+      7,
+      6,
+      5,
+      4,
+      3,
+      2,
+      1
+    ],
+    "pendant_weeks": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7
+    ],
+    "apres_weeks": [
+      1,
+      8
+    ],
+    "deduplicate": true,
+    "source_regle": "regle(3).xlsx / Feuil1",
+    "selection_strict": {
+      "valeur_inclusion": "1",
+      "temporalites": "Baseline/Baseline (FL) -> Avant RT ; Aigu -> Aigu ; Tardif -> Tardif",
+      "colonnes_regle": [
+        "06a COL Aigu"
+      ]
+    },
+    "binary_choice_decode": {
+      "enabled": true,
+      "zero_code_as_na": true,
+      "columns": {
+        "Traitement antalgique": [
+          "Non",
+          "Palier 1",
+          "Palier 2",
+          "Palier 3"
+        ],
+        "Dysurie": [
+          "0",
+          "1",
+          "2",
+          "3"
+        ],
+        "Brûlures mictionnelles": [
+          "Non",
+          "Oui"
+        ],
+        "Infection urinaire documentée": [
+          "Non",
+          "Oui"
+        ],
+        "Curiethérapie gynécologique prévue": [
+          "Non",
+          "Utéro vaginale",
+          "Fond vaginal"
+        ]
+      },
+      "tables": {
+        "Traitement antalgique": {
+          "1000": {
+            "label": "Non"
+          },
+          "0100": {
+            "label": "Palier 1"
+          },
+          "0010": {
+            "label": "Palier 2"
+          },
+          "0001": {
+            "label": "Palier 3"
+          }
+        },
+        "Dysurie": {
+          "1000": {
+            "label": "0",
+            "grade": 0
+          },
+          "0100": {
+            "label": "1",
+            "grade": 1
+          },
+          "0010": {
+            "label": "2",
+            "grade": 2
+          },
+          "0001": {
+            "label": "3",
+            "grade": 3
+          }
+        },
+        "Brûlures mictionnelles": {
+          "10": {
+            "label": "Non"
+          },
+          "01": {
+            "label": "Oui"
+          }
+        },
+        "Infection urinaire documentée": {
+          "10": {
+            "label": "Non"
+          },
+          "01": {
+            "label": "Oui"
+          }
+        },
+        "Curiethérapie gynécologique prévue": {
+          "100": {
+            "label": "Non"
+          },
+          "010": {
+            "label": "Utéro vaginale"
+          },
+          "001": {
+            "label": "Fond vaginal"
+          }
+        }
+      },
+      "meta": {
+        "logic": "Références validées SEIN/PROSTATE/URO; 2-3 caractères depuis regle(3); >3 grades par position.",
+        "source_formulaire": "formulaire_patient.xlsx"
+      }
+    },
+    "binary_choice_columns": {
+      "Traitement antalgique": [
+        "Non",
+        "Palier 1",
+        "Palier 2",
+        "Palier 3"
+      ],
+      "Dysurie": [
+        "0",
+        "1",
+        "2",
+        "3"
+      ],
+      "Brûlures mictionnelles": [
+        "Non",
+        "Oui"
+      ],
+      "Infection urinaire documentée": [
+        "Non",
+        "Oui"
+      ],
+      "Curiethérapie gynécologique prévue": [
+        "Non",
+        "Utéro vaginale",
+        "Fond vaginal"
+      ]
+    },
+    "binary_choice_tables": {
+      "Traitement antalgique": {
+        "1000": {
+          "label": "Non"
+        },
+        "0100": {
+          "label": "Palier 1"
+        },
+        "0010": {
+          "label": "Palier 2"
+        },
+        "0001": {
+          "label": "Palier 3"
+        }
+      },
+      "Dysurie": {
+        "1000": {
+          "label": "0",
+          "grade": 0
+        },
+        "0100": {
+          "label": "1",
+          "grade": 1
+        },
+        "0010": {
+          "label": "2",
+          "grade": 2
+        },
+        "0001": {
+          "label": "3",
+          "grade": 3
+        }
+      },
+      "Brûlures mictionnelles": {
+        "10": {
+          "label": "Non"
+        },
+        "01": {
+          "label": "Oui"
+        }
+      },
+      "Infection urinaire documentée": {
+        "10": {
+          "label": "Non"
+        },
+        "01": {
+          "label": "Oui"
+        }
+      },
+      "Curiethérapie gynécologique prévue": {
+        "100": {
+          "label": "Non"
+        },
+        "010": {
+          "label": "Utéro vaginale"
+        },
+        "001": {
+          "label": "Fond vaginal"
+        }
+      }
+    },
+    "one_hot_decode": {
+      "enabled": true,
+      "zero_code_as_na": true,
+      "columns": [
+        "Traitement antalgique",
+        "Dysurie",
+        "Brûlures mictionnelles",
+        "Infection urinaire documentée",
+        "Curiethérapie gynécologique prévue"
+      ],
+      "tables": {
+        "Traitement antalgique": {
+          "1000": {
+            "label": "Non"
+          },
+          "0100": {
+            "label": "Palier 1"
+          },
+          "0010": {
+            "label": "Palier 2"
+          },
+          "0001": {
+            "label": "Palier 3"
+          }
+        },
+        "Dysurie": {
+          "1000": {
+            "label": "0",
+            "grade": 0
+          },
+          "0100": {
+            "label": "1",
+            "grade": 1
+          },
+          "0010": {
+            "label": "2",
+            "grade": 2
+          },
+          "0001": {
+            "label": "3",
+            "grade": 3
+          }
+        },
+        "Brûlures mictionnelles": {
+          "10": {
+            "label": "Non"
+          },
+          "01": {
+            "label": "Oui"
+          }
+        },
+        "Infection urinaire documentée": {
+          "10": {
+            "label": "Non"
+          },
+          "01": {
+            "label": "Oui"
+          }
+        },
+        "Curiethérapie gynécologique prévue": {
+          "100": {
+            "label": "Non"
+          },
+          "010": {
+            "label": "Utéro vaginale"
+          },
+          "001": {
+            "label": "Fond vaginal"
+          }
+        }
+      }
+    },
+    "direct_grade_decode": {
+      "enabled": false,
+      "columns": [],
+      "tables": {}
+    },
+    "decoding_compatibility": {
+      "source": "Décodage supprimé à la demande utilisateur : extraction sans décodage.",
+      "included_decode_count": 0
+    },
+    "_cim10_note": "Préfixes CIM10 testés sur traitement_patient (1)(1).xlsx."
+  },
+  "columns": [
+    {
+      "Inclure": true,
+      "Colonne formulaire": "Dose délivrée (Gy)                                ",
+      "Nom export": "Dose délivrée (Gy)",
+      "Source sélection": "regle(3).xlsx / Feuil1 - STRICT valeur 1",
+      "Catégorie": "Données",
+      "Pertinence": "Règle Feuil1 = 1",
+      "Score": 100,
+      "Valeurs cohorte": 0,
+      "Patients cohorte": 0,
+      "Cumul": true,
+      "Avant RT": false,
+      "Aigu": true,
+      "Tardif": false,
+      "Source regle": "regle(3).xlsx / Feuil1",
+      "Ligne regle index": 8,
+      "Libellé règle": "Dose délivrée (Gy)",
+      "Colonne profil originale": "Dose délivrée (Gy)                                ",
+      "Type item règle": "Données",
+      "Sémantique règle": "dose",
+      "Temporalité source": {
+        "06a COL Aigu": 1
+      },
+      "Décodage actif": false,
+      "Type décodage": "",
+      "Décodage sortie": "",
+      "Règle agrégation": "",
+      "Table décodage": {},
+      "Source décodage": "",
+      "Longueur code binaire": null,
+      "Note décodage": "Valeur brute conservée."
+    },
+    {
+      "Inclure": true,
+      "Colonne formulaire": "ECOG",
+      "Nom export": "Performance status",
+      "Source sélection": "regle(3).xlsx / Feuil1 - STRICT valeur 1",
+      "Catégorie": "Table",
+      "Pertinence": "Règle Feuil1 = 1",
+      "Score": 100,
+      "Valeurs cohorte": 0,
+      "Patients cohorte": 0,
+      "Cumul": true,
+      "Avant RT": false,
+      "Aigu": true,
+      "Tardif": false,
+      "Source regle": "regle(3).xlsx / Feuil1",
+      "Ligne regle index": 25,
+      "Libellé règle": "Performance status",
+      "Colonne profil originale": "ECOG",
+      "Type item règle": "Table",
+      "Sémantique règle": "état général",
+      "Temporalité source": {
+        "06a COL Aigu": 1
+      },
+      "Décodage actif": false,
+      "Type décodage": "",
+      "Décodage sortie": "",
+      "Règle agrégation": "",
+      "Table décodage": {},
+      "Source décodage": "",
+      "Longueur code binaire": null,
+      "Note décodage": "Valeur brute conservée."
+    },
+    {
+      "Inclure": true,
+      "Colonne formulaire": "Poids actuel (kg)                                 ",
+      "Nom export": "Poids actuel (kg)",
+      "Source sélection": "regle(3).xlsx / Feuil1 - STRICT valeur 1",
+      "Catégorie": "Données",
+      "Pertinence": "Règle Feuil1 = 1",
+      "Score": 100,
+      "Valeurs cohorte": 0,
+      "Patients cohorte": 0,
+      "Cumul": true,
+      "Avant RT": false,
+      "Aigu": true,
+      "Tardif": false,
+      "Source regle": "regle(3).xlsx / Feuil1",
+      "Ligne regle index": 26,
+      "Libellé règle": "Poids actuel (kg)",
+      "Colonne profil originale": "Poids actuel (kg)                                 ",
+      "Type item règle": "Données",
+      "Sémantique règle": "nutrition",
+      "Temporalité source": {
+        "06a COL Aigu": 1
+      },
+      "Décodage actif": false,
+      "Type décodage": "",
+      "Décodage sortie": "",
+      "Règle agrégation": "",
+      "Table décodage": {},
+      "Source décodage": "",
+      "Longueur code binaire": null,
+      "Note décodage": "Valeur brute conservée."
+    },
+    {
+      "Inclure": true,
+      "Colonne formulaire": "Douleur pic site traité (0-10)                    ",
+      "Nom export": "Douleur pic site traité (0-10)",
+      "Source sélection": "regle(3).xlsx / Feuil1 - STRICT valeur 1",
+      "Catégorie": "Données",
+      "Pertinence": "Règle Feuil1 = 1",
+      "Score": 100,
+      "Valeurs cohorte": 0,
+      "Patients cohorte": 0,
+      "Cumul": true,
+      "Avant RT": false,
+      "Aigu": true,
+      "Tardif": false,
+      "Source regle": "regle(3).xlsx / Feuil1",
+      "Ligne regle index": 36,
+      "Libellé règle": "Douleur pic site traité (0-10)",
+      "Colonne profil originale": "Douleur pic site traité (0-10)                    ",
+      "Type item règle": "Données",
+      "Sémantique règle": "douleur",
+      "Temporalité source": {
+        "06a COL Aigu": 1
+      },
+      "Décodage actif": false,
+      "Type décodage": "",
+      "Décodage sortie": "",
+      "Règle agrégation": "",
+      "Table décodage": {},
+      "Source décodage": "",
+      "Longueur code binaire": null,
+      "Note décodage": "Valeur brute conservée."
+    },
+    {
+      "Inclure": true,
+      "Colonne formulaire": "Traitement antalgique                             ",
+      "Nom export": "Traitement antalgique",
+      "Source sélection": "regle(3).xlsx / Feuil1 - STRICT valeur 1",
+      "Catégorie": "Table",
+      "Pertinence": "Règle Feuil1 = 1",
+      "Score": 100,
+      "Valeurs cohorte": 0,
+      "Patients cohorte": 0,
+      "Cumul": true,
+      "Avant RT": false,
+      "Aigu": true,
+      "Tardif": false,
+      "Source regle": "regle(3).xlsx / Feuil1",
+      "Ligne regle index": 37,
+      "Libellé règle": "Traitement antalgique",
+      "Colonne profil originale": "Traitement antalgique                             ",
+      "Type item règle": "Table",
+      "Sémantique règle": "douleur",
+      "Temporalité source": {
+        "06a COL Aigu": 1
+      },
+      "Décodage actif": true,
+      "Type décodage": "binary_multiselect_id",
+      "Décodage sortie": "labels",
+      "Règle agrégation": "logical_or_then_labels",
+      "Table décodage": {
+        "1000": {
+          "label": "Non"
+        },
+        "0100": {
+          "label": "Palier 1"
+        },
+        "0010": {
+          "label": "Palier 2"
+        },
+        "0001": {
+          "label": "Palier 3"
+        }
+      },
+      "Source décodage": "Référence validée SEIN (SEIN_regle3_STRICT_DECODAGE_SELECTIF_CORRIGE_RECURRENCES.json)",
+      "Longueur code binaire": 4,
+      "Note décodage": "Commun SEIN"
+    },
+    {
+      "Inclure": true,
+      "Colonne formulaire": "Douleur fond site traité (0-10)                   ",
+      "Nom export": "Douleur fond site traité (0-10)",
+      "Source sélection": "regle(3).xlsx / Feuil1 - STRICT valeur 1",
+      "Catégorie": "Données",
+      "Pertinence": "Règle Feuil1 = 1",
+      "Score": 100,
+      "Valeurs cohorte": 0,
+      "Patients cohorte": 0,
+      "Cumul": true,
+      "Avant RT": false,
+      "Aigu": true,
+      "Tardif": false,
+      "Source regle": "regle(3).xlsx / Feuil1",
+      "Ligne regle index": 38,
+      "Libellé règle": "Douleur fond site traité (0-10)",
+      "Colonne profil originale": "Douleur fond site traité (0-10)                   ",
+      "Type item règle": "Données",
+      "Sémantique règle": "douleur",
+      "Temporalité source": {
+        "06a COL Aigu": 1
+      },
+      "Décodage actif": false,
+      "Type décodage": "",
+      "Décodage sortie": "",
+      "Règle agrégation": "",
+      "Table décodage": {},
+      "Source décodage": "",
+      "Longueur code binaire": null,
+      "Note décodage": "Valeur brute conservée."
+    },
+    {
+      "Inclure": true,
+      "Colonne formulaire": "Chimiothérapie/Biothérapie en cours               ",
+      "Nom export": "Chimiothérapie/Biothérapie en cours",
+      "Source sélection": "regle(3).xlsx / Feuil1 - STRICT valeur 1",
+      "Catégorie": "Données",
+      "Pertinence": "Règle Feuil1 = 1",
+      "Score": 100,
+      "Valeurs cohorte": 0,
+      "Patients cohorte": 0,
+      "Cumul": true,
+      "Avant RT": false,
+      "Aigu": true,
+      "Tardif": false,
+      "Source regle": "regle(3).xlsx / Feuil1",
+      "Ligne regle index": 47,
+      "Libellé règle": "Chimiothérapie/Biothérapie en cours",
+      "Colonne profil originale": "Chimiothérapie/Biothérapie en cours               ",
+      "Type item règle": "Données",
+      "Sémantique règle": "chimiothérapie",
+      "Temporalité source": {
+        "06a COL Aigu": 1
+      },
+      "Décodage actif": false,
+      "Type décodage": "",
+      "Décodage sortie": "",
+      "Règle agrégation": "",
+      "Table décodage": {},
+      "Source décodage": "",
+      "Longueur code binaire": null,
+      "Note décodage": "Valeur brute conservée."
+    },
+    {
+      "Inclure": true,
+      "Colonne formulaire": "Anorexie",
+      "Nom export": "Anorexie",
+      "Source sélection": "regle(3).xlsx / Feuil1 - STRICT valeur 1",
+      "Catégorie": "Table",
+      "Pertinence": "Règle Feuil1 = 1",
+      "Score": 100,
+      "Valeurs cohorte": 0,
+      "Patients cohorte": 0,
+      "Cumul": true,
+      "Avant RT": false,
+      "Aigu": true,
+      "Tardif": false,
+      "Source regle": "regle(3).xlsx / Feuil1",
+      "Ligne regle index": 133,
+      "Libellé règle": "Anorexie",
+      "Colonne profil originale": "Anorexie",
+      "Type item règle": "Table",
+      "Sémantique règle": "nutrition",
+      "Temporalité source": {
+        "06a COL Aigu": 1
+      },
+      "Décodage actif": false,
+      "Type décodage": "",
+      "Décodage sortie": "",
+      "Règle agrégation": "",
+      "Table décodage": {},
+      "Source décodage": "",
+      "Longueur code binaire": null,
+      "Note décodage": "Valeur brute conservée."
+    },
+    {
+      "Inclure": true,
+      "Colonne formulaire": "Nausée",
+      "Nom export": "Nausées",
+      "Source sélection": "regle(3).xlsx / Feuil1 - STRICT valeur 1",
+      "Catégorie": "Table",
+      "Pertinence": "Règle Feuil1 = 1",
+      "Score": 100,
+      "Valeurs cohorte": 0,
+      "Patients cohorte": 0,
+      "Cumul": true,
+      "Avant RT": false,
+      "Aigu": true,
+      "Tardif": false,
+      "Source regle": "regle(3).xlsx / Feuil1",
+      "Ligne regle index": 139,
+      "Libellé règle": "Nausées",
+      "Colonne profil originale": "Nausée",
+      "Type item règle": "Table",
+      "Sémantique règle": "nutrition",
+      "Temporalité source": {
+        "06a COL Aigu": 1
+      },
+      "Décodage actif": false,
+      "Type décodage": "",
+      "Décodage sortie": "",
+      "Règle agrégation": "",
+      "Table décodage": {},
+      "Source décodage": "",
+      "Longueur code binaire": null,
+      "Note décodage": "Valeur brute conservée."
+    },
+    {
+      "Inclure": true,
+      "Colonne formulaire": "Vomissement",
+      "Nom export": "Vomissement",
+      "Source sélection": "regle(3).xlsx / Feuil1 - STRICT valeur 1",
+      "Catégorie": "Table",
+      "Pertinence": "Règle Feuil1 = 1",
+      "Score": 100,
+      "Valeurs cohorte": 0,
+      "Patients cohorte": 0,
+      "Cumul": true,
+      "Avant RT": false,
+      "Aigu": true,
+      "Tardif": false,
+      "Source regle": "regle(3).xlsx / Feuil1",
+      "Ligne regle index": 140,
+      "Libellé règle": "Vomissement",
+      "Colonne profil originale": "Vomissement",
+      "Type item règle": "Table",
+      "Sémantique règle": "nutrition",
+      "Temporalité source": {
+        "06a COL Aigu": 1
+      },
+      "Décodage actif": false,
+      "Type décodage": "",
+      "Décodage sortie": "",
+      "Règle agrégation": "",
+      "Table décodage": {},
+      "Source décodage": "",
+      "Longueur code binaire": null,
+      "Note décodage": "Valeur brute conservée."
+    },
+    {
+      "Inclure": true,
+      "Colonne formulaire": "Diarrhée",
+      "Nom export": "Diarrhées",
+      "Source sélection": "regle(3).xlsx / Feuil1 - STRICT valeur 1",
+      "Catégorie": "Table",
+      "Pertinence": "Règle Feuil1 = 1",
+      "Score": 100,
+      "Valeurs cohorte": 0,
+      "Patients cohorte": 0,
+      "Cumul": true,
+      "Avant RT": false,
+      "Aigu": true,
+      "Tardif": false,
+      "Source regle": "regle(3).xlsx / Feuil1",
+      "Ligne regle index": 194,
+      "Libellé règle": "Diarrhées",
+      "Colonne profil originale": "Diarrhée",
+      "Type item règle": "Table",
+      "Sémantique règle": "digestif",
+      "Temporalité source": {
+        "06a COL Aigu": 1
+      },
+      "Décodage actif": false,
+      "Type décodage": "",
+      "Décodage sortie": "",
+      "Règle agrégation": "",
+      "Table décodage": {},
+      "Source décodage": "",
+      "Longueur code binaire": null,
+      "Note décodage": "Valeur brute conservée."
+    },
+    {
+      "Inclure": true,
+      "Colonne formulaire": "Constipation",
+      "Nom export": "Constipation",
+      "Source sélection": "regle(3).xlsx / Feuil1 - STRICT valeur 1",
+      "Catégorie": "Table",
+      "Pertinence": "Règle Feuil1 = 1",
+      "Score": 100,
+      "Valeurs cohorte": 0,
+      "Patients cohorte": 0,
+      "Cumul": true,
+      "Avant RT": false,
+      "Aigu": true,
+      "Tardif": false,
+      "Source regle": "regle(3).xlsx / Feuil1",
+      "Ligne regle index": 195,
+      "Libellé règle": "Constipation",
+      "Colonne profil originale": "Constipation",
+      "Type item règle": "Table",
+      "Sémantique règle": "digestif",
+      "Temporalité source": {
+        "06a COL Aigu": 1
+      },
+      "Décodage actif": false,
+      "Type décodage": "",
+      "Décodage sortie": "",
+      "Règle agrégation": "",
+      "Table décodage": {},
+      "Source décodage": "",
+      "Longueur code binaire": null,
+      "Note décodage": "Valeur brute conservée."
+    },
+    {
+      "Inclure": true,
+      "Colonne formulaire": "Hémorragie utérine",
+      "Nom export": "Métrorragie (Hémorragie utérine)",
+      "Source sélection": "regle(3).xlsx / Feuil1 - STRICT valeur 1",
+      "Catégorie": "Table",
+      "Pertinence": "Règle Feuil1 = 1",
+      "Score": 100,
+      "Valeurs cohorte": 0,
+      "Patients cohorte": 0,
+      "Cumul": true,
+      "Avant RT": false,
+      "Aigu": true,
+      "Tardif": false,
+      "Source regle": "regle(3).xlsx / Feuil1",
+      "Ligne regle index": 202,
+      "Libellé règle": "Métrorragie (Hémorragie utérine)",
+      "Colonne profil originale": "Hémorragie utérine",
+      "Type item règle": "Table",
+      "Sémantique règle": "gynéco",
+      "Temporalité source": {
+        "06a COL Aigu": 1
+      },
+      "Décodage actif": false,
+      "Type décodage": "",
+      "Décodage sortie": "",
+      "Règle agrégation": "",
+      "Table décodage": {},
+      "Source décodage": "",
+      "Longueur code binaire": null,
+      "Note décodage": "Valeur brute conservée."
+    },
+    {
+      "Inclure": true,
+      "Colonne formulaire": "Inflammation vaginale",
+      "Nom export": "Mucite vaginale (Inflammation vaginale)",
+      "Source sélection": "regle(3).xlsx / Feuil1 - STRICT valeur 1",
+      "Catégorie": "Table",
+      "Pertinence": "Règle Feuil1 = 1",
+      "Score": 100,
+      "Valeurs cohorte": 0,
+      "Patients cohorte": 0,
+      "Cumul": true,
+      "Avant RT": false,
+      "Aigu": true,
+      "Tardif": false,
+      "Source regle": "regle(3).xlsx / Feuil1",
+      "Ligne regle index": 204,
+      "Libellé règle": "Mucite vaginale (Inflammation vaginale)",
+      "Colonne profil originale": "Inflammation vaginale",
+      "Type item règle": "Table",
+      "Sémantique règle": "gynéco",
+      "Temporalité source": {
+        "06a COL Aigu": 1
+      },
+      "Décodage actif": false,
+      "Type décodage": "",
+      "Décodage sortie": "",
+      "Règle agrégation": "",
+      "Table décodage": {},
+      "Source décodage": "",
+      "Longueur code binaire": null,
+      "Note décodage": "Valeur brute conservée."
+    },
+    {
+      "Inclure": true,
+      "Colonne formulaire": "Dysurie                                           ",
+      "Nom export": "Dysurie",
+      "Source sélection": "regle(3).xlsx / Feuil1 - STRICT valeur 1",
+      "Catégorie": "Table",
+      "Pertinence": "Règle Feuil1 = 1",
+      "Score": 100,
+      "Valeurs cohorte": 0,
+      "Patients cohorte": 0,
+      "Cumul": true,
+      "Avant RT": false,
+      "Aigu": true,
+      "Tardif": false,
+      "Source regle": "regle(3).xlsx / Feuil1",
+      "Ligne regle index": 218,
+      "Libellé règle": "Dysurie",
+      "Colonne profil originale": "Dysurie                                           ",
+      "Type item règle": "Table",
+      "Sémantique règle": "urologie",
+      "Temporalité source": {
+        "06a COL Aigu": 1
+      },
+      "Décodage actif": true,
+      "Type décodage": "binary_graded_choice",
+      "Décodage sortie": "grade",
+      "Règle agrégation": "logical_or_then_max_grade",
+      "Table décodage": {
+        "1000": {
+          "label": "0",
+          "grade": 0
+        },
+        "0100": {
+          "label": "1",
+          "grade": 1
+        },
+        "0010": {
+          "label": "2",
+          "grade": 2
+        },
+        "0001": {
+          "label": "3",
+          "grade": 3
+        }
+      },
+      "Source décodage": "Référence validée PROSTATE (PROSTATE_regle3_DECODAGE_SURVEILLANCE_CORRIGEE.json)",
+      "Longueur code binaire": 4,
+      "Note décodage": "Commun PROSTATE"
+    },
+    {
+      "Inclure": true,
+      "Colonne formulaire": "Fréquence urinaire",
+      "Nom export": "Pollakiurie",
+      "Source sélection": "regle(3).xlsx / Feuil1 - STRICT valeur 1",
+      "Catégorie": "Table",
+      "Pertinence": "Règle Feuil1 = 1",
+      "Score": 100,
+      "Valeurs cohorte": 0,
+      "Patients cohorte": 0,
+      "Cumul": true,
+      "Avant RT": false,
+      "Aigu": true,
+      "Tardif": false,
+      "Source regle": "regle(3).xlsx / Feuil1",
+      "Ligne regle index": 219,
+      "Libellé règle": "Pollakiurie",
+      "Colonne profil originale": "Fréquence urinaire",
+      "Type item règle": "Table",
+      "Sémantique règle": "urologie",
+      "Temporalité source": {
+        "06a COL Aigu": 1
+      },
+      "Décodage actif": false,
+      "Type décodage": "",
+      "Décodage sortie": "",
+      "Règle agrégation": "",
+      "Table décodage": {},
+      "Source décodage": "",
+      "Longueur code binaire": null,
+      "Note décodage": "Valeur brute conservée."
+    },
+    {
+      "Inclure": true,
+      "Colonne formulaire": "Brûlures mictionnelles                            ",
+      "Nom export": "Brûlures mictionnelles",
+      "Source sélection": "regle(3).xlsx / Feuil1 - STRICT valeur 1",
+      "Catégorie": "Table",
+      "Pertinence": "Règle Feuil1 = 1",
+      "Score": 100,
+      "Valeurs cohorte": 0,
+      "Patients cohorte": 0,
+      "Cumul": true,
+      "Avant RT": false,
+      "Aigu": true,
+      "Tardif": false,
+      "Source regle": "regle(3).xlsx / Feuil1",
+      "Ligne regle index": 223,
+      "Libellé règle": "Brûlures mictionnelles",
+      "Colonne profil originale": "Brûlures mictionnelles                            ",
+      "Type item règle": "Table",
+      "Sémantique règle": "urologie",
+      "Temporalité source": {
+        "06a COL Aigu": 1
+      },
+      "Décodage actif": true,
+      "Type décodage": "binary_choice_id",
+      "Décodage sortie": "labels",
+      "Règle agrégation": "logical_or_then_labels",
+      "Table décodage": {
+        "10": {
+          "label": "Non"
+        },
+        "01": {
+          "label": "Oui"
+        }
+      },
+      "Source décodage": "Référence validée PROSTATE (PROSTATE_regle3_DECODAGE_SURVEILLANCE_CORRIGEE.json)",
+      "Longueur code binaire": 2,
+      "Note décodage": "Commun PROSTATE"
+    },
+    {
+      "Inclure": true,
+      "Colonne formulaire": "Infection urinaire documentée                     ",
+      "Nom export": "Infection urinaire documentée",
+      "Source sélection": "regle(3).xlsx / Feuil1 - STRICT valeur 1",
+      "Catégorie": "Table",
+      "Pertinence": "Règle Feuil1 = 1",
+      "Score": 100,
+      "Valeurs cohorte": 0,
+      "Patients cohorte": 0,
+      "Cumul": true,
+      "Avant RT": false,
+      "Aigu": true,
+      "Tardif": false,
+      "Source regle": "regle(3).xlsx / Feuil1",
+      "Ligne regle index": 224,
+      "Libellé règle": "Infection urinaire documentée",
+      "Colonne profil originale": "Infection urinaire documentée                     ",
+      "Type item règle": "Table",
+      "Sémantique règle": "urologie",
+      "Temporalité source": {
+        "06a COL Aigu": 1
+      },
+      "Décodage actif": true,
+      "Type décodage": "binary_choice_id",
+      "Décodage sortie": "labels",
+      "Règle agrégation": "logical_or_then_labels",
+      "Table décodage": {
+        "10": {
+          "label": "Non"
+        },
+        "01": {
+          "label": "Oui"
+        }
+      },
+      "Source décodage": "Référence validée URO (URO_regle3_DECODAGE_UNIVERSEL_CIM10_CORRIGE.json)",
+      "Longueur code binaire": 2,
+      "Note décodage": "Commun URO"
+    },
+    {
+      "Inclure": true,
+      "Colonne formulaire": "Miction impérieuse",
+      "Nom export": "Impériosité mictionnelle (Urgence urinaire)",
+      "Source sélection": "regle(3).xlsx / Feuil1 - STRICT valeur 1",
+      "Catégorie": "Table",
+      "Pertinence": "Règle Feuil1 = 1",
+      "Score": 100,
+      "Valeurs cohorte": 0,
+      "Patients cohorte": 0,
+      "Cumul": true,
+      "Avant RT": false,
+      "Aigu": true,
+      "Tardif": false,
+      "Source regle": "regle(3).xlsx / Feuil1",
+      "Ligne regle index": 225,
+      "Libellé règle": "Impériosité mictionnelle (Urgence urinaire)",
+      "Colonne profil originale": "Miction impérieuse",
+      "Type item règle": "Table",
+      "Sémantique règle": "urologie",
+      "Temporalité source": {
+        "06a COL Aigu": 1
+      },
+      "Décodage actif": false,
+      "Type décodage": "",
+      "Décodage sortie": "",
+      "Règle agrégation": "",
+      "Table décodage": {},
+      "Source décodage": "",
+      "Longueur code binaire": null,
+      "Note décodage": "Valeur brute conservée."
+    },
+    {
+      "Inclure": true,
+      "Colonne formulaire": "Incontinence urinaire",
+      "Nom export": "Incontinence urinaire",
+      "Source sélection": "regle(3).xlsx / Feuil1 - STRICT valeur 1",
+      "Catégorie": "Table",
+      "Pertinence": "Règle Feuil1 = 1",
+      "Score": 100,
+      "Valeurs cohorte": 0,
+      "Patients cohorte": 0,
+      "Cumul": true,
+      "Avant RT": false,
+      "Aigu": true,
+      "Tardif": false,
+      "Source regle": "regle(3).xlsx / Feuil1",
+      "Ligne regle index": 226,
+      "Libellé règle": "Incontinence urinaire",
+      "Colonne profil originale": "Incontinence urinaire",
+      "Type item règle": "Table",
+      "Sémantique règle": "urologie",
+      "Temporalité source": {
+        "06a COL Aigu": 1
+      },
+      "Décodage actif": false,
+      "Type décodage": "",
+      "Décodage sortie": "",
+      "Règle agrégation": "",
+      "Table décodage": {},
+      "Source décodage": "",
+      "Longueur code binaire": null,
+      "Note décodage": "Valeur brute conservée."
+    },
+    {
+      "Inclure": true,
+      "Colonne formulaire": "Radiodermite",
+      "Nom export": "Dermite radique",
+      "Source sélection": "regle(3).xlsx / Feuil1 - STRICT valeur 1",
+      "Catégorie": "Table",
+      "Pertinence": "Règle Feuil1 = 1",
+      "Score": 100,
+      "Valeurs cohorte": 0,
+      "Patients cohorte": 0,
+      "Cumul": true,
+      "Avant RT": false,
+      "Aigu": true,
+      "Tardif": false,
+      "Source regle": "regle(3).xlsx / Feuil1",
+      "Ligne regle index": 265,
+      "Libellé règle": "Dermite radique",
+      "Colonne profil originale": "Radiodermite",
+      "Type item règle": "Table",
+      "Sémantique règle": "peau",
+      "Temporalité source": {
+        "06a COL Aigu": 1
+      },
+      "Décodage actif": false,
+      "Type décodage": "",
+      "Décodage sortie": "",
+      "Règle agrégation": "",
+      "Table décodage": {},
+      "Source décodage": "",
+      "Longueur code binaire": null,
+      "Note décodage": "Valeur brute conservée."
+    },
+    {
+      "Inclure": true,
+      "Colonne formulaire": "Traitement prescrit par le radiothérapeute        ",
+      "Nom export": "Traitement prescrit par le radiothérapeute",
+      "Source sélection": "regle(3).xlsx / Feuil1 - STRICT valeur 1",
+      "Catégorie": "Données",
+      "Pertinence": "Règle Feuil1 = 1",
+      "Score": 100,
+      "Valeurs cohorte": 0,
+      "Patients cohorte": 0,
+      "Cumul": true,
+      "Avant RT": false,
+      "Aigu": true,
+      "Tardif": false,
+      "Source regle": "regle(3).xlsx / Feuil1",
+      "Ligne regle index": 300,
+      "Libellé règle": "Traitement prescrit par le radiothérapeute",
+      "Colonne profil originale": "Traitement prescrit par le radiothérapeute        ",
+      "Type item règle": "Données",
+      "Sémantique règle": "médicament",
+      "Temporalité source": {
+        "06a COL Aigu": 1
+      },
+      "Décodage actif": false,
+      "Type décodage": "",
+      "Décodage sortie": "",
+      "Règle agrégation": "",
+      "Table décodage": {},
+      "Source décodage": "",
+      "Longueur code binaire": null,
+      "Note décodage": "Valeur brute conservée."
+    },
+    {
+      "Inclure": true,
+      "Colonne formulaire": "Notes de consultation                             ",
+      "Nom export": "Notes de consultations",
+      "Source sélection": "regle(3).xlsx / Feuil1 - STRICT valeur 1",
+      "Catégorie": "Texte médical",
+      "Pertinence": "Règle Feuil1 = 1",
+      "Score": 100,
+      "Valeurs cohorte": 0,
+      "Patients cohorte": 0,
+      "Cumul": true,
+      "Avant RT": false,
+      "Aigu": true,
+      "Tardif": false,
+      "Source regle": "regle(3).xlsx / Feuil1",
+      "Ligne regle index": 304,
+      "Libellé règle": "Notes de consultations",
+      "Colonne profil originale": "Notes de consultation                             ",
+      "Type item règle": "Texte médical",
+      "Sémantique règle": "divers",
+      "Temporalité source": {
+        "06a COL Aigu": 1
+      },
+      "Décodage actif": false,
+      "Type décodage": "",
+      "Décodage sortie": "",
+      "Règle agrégation": "",
+      "Table décodage": {},
+      "Source décodage": "",
+      "Longueur code binaire": null,
+      "Note décodage": "Valeur brute conservée."
+    },
+    {
+      "Inclure": true,
+      "Colonne formulaire": "Curiethérapie gynécologique prévue                ",
+      "Nom export": "Curiethérapie gynécologique prévue",
+      "Source sélection": "regle(3).xlsx / Feuil1 - STRICT valeur 1",
+      "Catégorie": "Table",
+      "Pertinence": "Règle Feuil1 = 1",
+      "Score": 100,
+      "Valeurs cohorte": 0,
+      "Patients cohorte": 0,
+      "Cumul": true,
+      "Avant RT": false,
+      "Aigu": true,
+      "Tardif": false,
+      "Source regle": "regle(3).xlsx / Feuil1",
+      "Ligne regle index": 427,
+      "Libellé règle": "Curiethérapie gynécologique prévue",
+      "Colonne profil originale": "Curiethérapie gynécologique prévue                ",
+      "Type item règle": "Table",
+      "Sémantique règle": "divers",
+      "Temporalité source": {
+        "06a COL Aigu": 1
+      },
+      "Décodage actif": true,
+      "Type décodage": "binary_choice_id",
+      "Décodage sortie": "labels",
+      "Règle agrégation": "logical_or_then_labels",
+      "Table décodage": {
+        "100": {
+          "label": "Non"
+        },
+        "010": {
+          "label": "Utéro vaginale"
+        },
+        "001": {
+          "label": "Fond vaginal"
+        }
+      },
+      "Source décodage": "regle(3).xlsx modalités exactes (3 choix)",
+      "Longueur code binaire": 3,
+      "Note décodage": "Règle exacte 3 caractères"
+    }
+  ],
+  "metadata": {
+    "generator": "ChatGPT",
+    "source_file": "regle(3).xlsx",
+    "strict_inclusion": true,
+    "included_items": 24,
+    "decode_count": 0,
+    "regle_headers": [
+      "06a COL Aigu"
+    ],
+    "decoding_disabled": true,
+    "validation_rigoureuse": {
+      "source_hashes": {
+        "regle(3).xlsx": "488ad07d3ce2f4bf67dc6f26bba0a6a702db8b5d508fc546e6bff8c8de33f33b",
+        "formulaire_patient.xlsx": "18e7b5c54bef96d40d4e88c1083affaed8934b2b4d4f1f92a0721f15fa01984c",
+        "traitement_patient (1)(1).xlsx": "fa0c35c173f23489399c8ce5f83ce9ad85047c3768932a5c973798e3812bc721",
+        "ethos_patient.xlsx": "f1712207c3ff5131a4eb9c7b8054b23ebd5444852ea5f98ed19cf0aedc107c7b",
+        "json_localisations_regle3_STRICT_SANS_DECODAGE.zip": "b33d5fc72a42f1d6c3e2e5e9b575a081b39a42ba73519622745f608d9d6eedab",
+        "SEIN_regle3_STRICT_DECODAGE_SELECTIF_CORRIGE_RECURRENCES.json": "016d5747a918c119db59c58825e5ee84734d194740849c1118ab1d8ac20f9fc7",
+        "PROSTATE_regle3_DECODAGE_SURVEILLANCE_CORRIGEE.json": "f50306d346e6be5dd214dfa9876ac066204f18682eee87ab87345f554f1b1f6a",
+        "URO_regle3_DECODAGE_UNIVERSEL_CIM10_CORRIGE.json": "f3c2168211780d7f45f2b80e02e941b4892b147e9f1eaa4463df7b8a62a67cb6"
+      },
+      "items_attendus": 24,
+      "items_manquants": 0,
+      "items_en_trop": 0,
+      "erreurs_temporalites": 0,
+      "vrais_items_binaires_decodes": 5,
+      "faux_positifs_binaires_laisses_bruts": 4,
+      "binaires_restants_apres_simulation": 0,
+      "cim10_prefixes": [
+        "C53",
+        "D06"
+      ],
+      "lignes_cim10": 355,
+      "patients_cim10": 43,
+      "lignes_cim10_dose_non_nulle": 355,
+      "concordance_site": 0.9802816901408451,
+      "test_thorax_dysurie_absente": true,
+      "statut": "OK"
+    }
+  },
+  "profile_debug": {
+    "performance_status_decoding": "Décodage globalement désactivé.",
+    "decoding_disabled": {
+      "enabled": true,
+      "note": "Toutes les règles de décodage ont été retirées du profil."
+    }
+  }
+}
