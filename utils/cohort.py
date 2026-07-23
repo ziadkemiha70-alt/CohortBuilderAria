@@ -13,35 +13,233 @@ from utils.clean import (
     nonempty_mask,
     normalize_cim10,
 )
-from utils.text import find_col_by_norm
+from utils.text import find_col_by_norm, norm_key
+
+
+def _find_all_alias_columns(columns: List[str], aliases: List[str]) -> List[str]:
+    """Trouve les colonnes compatibles avec les alias, dans l'ordre de priorité.
+
+    Le nouveau SQL peut contenir les colonnes `DiagnosisCodes`, `StartDateTime`,
+    `LastDateTime`, `Total_dose`, `NbTreatedFrac`, alors que les extractions
+    plus anciennes ou ETHOS peuvent encore contenir `DiagnosisCode`,
+    `PremiereFractionChamp`, `DoseEffectuée2`, etc.
+    """
+    norm_to_cols: Dict[str, List[str]] = {}
+    for col in columns:
+        norm_to_cols.setdefault(norm_key(col), []).append(col)
+
+    found: List[str] = []
+    for alias in aliases:
+        for col in norm_to_cols.get(norm_key(alias), []):
+            if col not in found:
+                found.append(col)
+    return found
+
+
+def _first_existing_alias_column(columns: List[str], aliases: List[str]) -> Optional[str]:
+    """Retourne le premier alias réellement présent, sans créer de colonne technique.
+
+    Utilisé pour l'identifiant patient affiché : on évite de fusionner `PatientId`
+    et `pt_id` dans `_aria_patient_id_resolved`, car ce sont deux identifiants
+    différents et ils doivent rester visibles séparément dans l'export.
+    """
+    cols = _find_all_alias_columns(columns, aliases)
+    return cols[0] if cols else None
+
+
+def _coalesce_treatment_aliases(
+    tx: pd.DataFrame, aliases: List[str], resolved_col: str
+) -> Optional[str]:
+    """Crée une colonne technique unique nouveau SQL + anciens alias.
+
+    Important : la première colonne trouvée dans `aliases` est prioritaire.
+    Ainsi `DiagnosisCodes` du nouveau traitement reste prioritaire sur
+    `DiagnosisCode` éventuellement présent dans ETHOS après fusion.
+    """
+    cols = _find_all_alias_columns(list(tx.columns), aliases)
+    if not cols:
+        return None
+    if len(cols) == 1:
+        return cols[0]
+
+    values = pd.Series(pd.NA, index=tx.index, dtype="object")
+    for col in cols:
+        mask = (~nonempty_mask(values)) & nonempty_mask(tx[col])
+        values.loc[mask] = tx.loc[mask, col]
+
+    tx[resolved_col] = values
+    return resolved_col
 
 
 def resolve_treatment_columns(tx: pd.DataFrame) -> Dict[str, Optional[str]]:
+    """Résout les colonnes traitement compatibles nouveau SQL + anciens exports.
+
+    Nouveaux noms prioritaires :
+    - `DiagnosisCodes` pour les CIM10, possiblement multiples dans une cellule ;
+    - `StartDateTime` / `LastDateTime` pour les dates RT ;
+    - `Total_dose` pour la dose, possiblement écrite `40.05 | 48` ;
+    - `NbTreatedFrac` pour les fractions réalisées.
+    """
+    if tx is None or tx.empty:
+        return {
+            "patient_id": None,
+            "dose": None,
+            "nb_fractions": None,
+            "start": None,
+            "end": None,
+            "cim": None,
+        }
+
     return {
-        "patient_id": find_col_by_norm(
-            tx.columns, ["PatientId", "Patient ID", "IdPatient", "Patient_ID"]
+        "patient_id": _first_existing_alias_column(
+            list(tx.columns),
+            [
+                "PatientId",
+                "Patient ID",
+                "IdPatient",
+                "Patient_ID",
+                "pt_id",
+            ],
         ),
-        "dose": find_col_by_norm(
-            tx.columns,
-            ["DoseEffectuée2", "DoseEffectuee2", "Dose effectuée", "DoseEffectuee"],
+        "dose": _coalesce_treatment_aliases(
+            tx,
+            [
+                "Total_dose",
+                "Total dose",
+                "TotalDose",
+                "DosesTotal2",
+                "DoseEffectuée2",
+                "DoseEffectuee2",
+                "Dose effectuée",
+                "Dose effectuee",
+                "DoseEffectuee",
+                "Dose",
+            ],
+            "_aria_dose_resolved",
         ),
-        "nb_fractions": find_col_by_norm(
-            tx.columns,
-            ["NbFractionsEffectués", "NbFractionsEffectues", "Nombre fractions"],
+        "nb_fractions": _coalesce_treatment_aliases(
+            tx,
+            [
+                "NbTreatedFrac",
+                "Nb Treated Frac",
+                "NbFractionsEffectués",
+                "NbFractionsEffectues",
+                "Nombre fractions",
+                "NbFractions",
+                "PlannedFrac",
+            ],
+            "_aria_nb_fractions_resolved",
         ),
-        "start": find_col_by_norm(
-            tx.columns,
-            ["PremiereFractionChamp", "Première fraction", "Date première fraction"],
+        "start": _coalesce_treatment_aliases(
+            tx,
+            [
+                "StartDateTime",
+                "Start Date Time",
+                "PremiereFractionChamp",
+                "Première fraction",
+                "Date première fraction",
+                "FirstTreatmentDate",
+                "StartDate",
+            ],
+            "_aria_start_resolved",
         ),
-        "end": find_col_by_norm(
-            tx.columns,
-            ["DerniereFractionChamp", "Dernière fraction", "Date dernière fraction"],
+        "end": _coalesce_treatment_aliases(
+            tx,
+            [
+                "LastDateTime",
+                "Last Date Time",
+                "DerniereFractionChamp",
+                "Dernière fraction",
+                "Date dernière fraction",
+                "EndDate",
+                "LastTreatmentDate",
+            ],
+            "_aria_end_resolved",
         ),
-        "cim": find_col_by_norm(
-            tx.columns, ["DiagnosisCode", "Code CIM", "CIM10", "Code_CIM_Diagnostic"]
+        "cim": _coalesce_treatment_aliases(
+            tx,
+            [
+                "DiagnosisCodes",
+                "Diagnosis Codes",
+                "DiagnosisCode",
+                "Diagnosis Code",
+                "Code CIM",
+                "CIM10",
+                "ICD",
+                "Code_CIM_Diagnostic",
+            ],
+            "_aria_cim_resolved",
         ),
     }
 
+
+def _extract_cim10_tokens(value: Any) -> List[str]:
+    """Extrait les codes CIM10 d'une cellule, même si plusieurs codes sont présents.
+
+    Exemples acceptés : `C61`, `C61 | C50.9`, `C61;D07.5`, `C61 - prostate`.
+    """
+    if pd.isna(value):
+        return []
+    raw = str(value).upper().replace("-", ".")
+    tokens = re.findall(r"[A-Z][0-9]{2}(?:\.[0-9A-Z]+)?", raw)
+    return [str(t).strip() for t in tokens if str(t).strip()]
+
+
+def _series_matches_cim10(series: pd.Series, wanted: List[str]) -> pd.Series:
+    """Retourne True si au moins un code CIM10 de la cellule commence par un code demandé."""
+    if series is None or not wanted:
+        return pd.Series(True, index=series.index if series is not None else None)
+
+    wanted_norm = (
+        normalize_cim10(pd.Series(wanted, dtype="string"))
+        .dropna()
+        .astype(str)
+        .tolist()
+    )
+    wanted_norm = [w for w in wanted_norm if w]
+    if not wanted_norm:
+        return pd.Series(True, index=series.index)
+
+    def _match_one(value: Any) -> bool:
+        tokens = _extract_cim10_tokens(value)
+        if not tokens:
+            # Fallback ancien comportement pour les cellules déjà simples.
+            normalized = normalize_cim10(pd.Series([value], dtype="string")).iloc[0]
+            tokens = [str(normalized)] if str(normalized) else []
+        return any(tok.startswith(w) for tok in tokens for w in wanted_norm)
+
+    return series.apply(_match_one)
+
+
+def _dose_has_nonzero_value(value: Any) -> bool:
+    """Vrai si une cellule dose contient au moins une valeur numérique non nulle.
+
+    Le nouveau SQL peut écrire `Total_dose` sous forme multi-valeurs, par exemple
+    `40.05 | 48`. Un `pd.to_numeric` strict transforme cela en NaN et supprime
+    à tort des patients. Ici, on extrait toutes les valeurs numériques présentes.
+    """
+    if pd.isna(value):
+        return False
+    s = str(value).strip()
+    if not s or s.lower() in {"nan", "none", "<na>", "na"}:
+        return False
+    s = s.replace(",", ".")
+    numbers = re.findall(r"[-+]?\d+(?:\.\d+)?", s)
+    if not numbers:
+        return False
+    for number in numbers:
+        try:
+            if abs(float(number)) > 0:
+                return True
+        except Exception:
+            continue
+    return False
+
+
+def _dose_nonzero_mask(series: pd.Series) -> pd.Series:
+    if series is None:
+        return pd.Series(dtype=bool)
+    return series.apply(_dose_has_nonzero_value).fillna(False).astype(bool)
 
 def _is_nonempty_column(df: pd.DataFrame, col: Optional[str]) -> pd.Series:
     if col is None or col not in df.columns:
@@ -81,11 +279,7 @@ def prepare_ethos_treatment(ethos: pd.DataFrame) -> pd.DataFrame:
         out = out[keep].copy()
 
     if dose_col and dose_col in out.columns:
-        dose = pd.to_numeric(
-            out[dose_col].astype("string").str.replace(",", ".", regex=False),
-            errors="coerce",
-        )
-        out = out[dose.fillna(0) != 0].copy()
+        out = out[_dose_nonzero_mask(out[dose_col])].copy()
 
     return out.drop_duplicates(ignore_index=True)
 
@@ -202,7 +396,6 @@ def build_ethos_integration_report(
     return pd.DataFrame(rows)
 
 
-@st.cache_data(show_spinner=False)
 def filter_cohort(
     tx: pd.DataFrame,
     tx_cols: Dict[str, Optional[str]],
@@ -210,89 +403,157 @@ def filter_cohort(
     mode_cim10: str,
     dose_non_nulle: bool,
 ) -> pd.DataFrame:
+    """Filtre la cohorte traitement.
+
+    Correction nouveau SQL :
+    - le CIM10 est recherché dans `DiagnosisCodes` comme liste de codes, pas
+      comme simple chaîne ;
+    - la dose non nulle accepte `Total_dose` contenant plusieurs valeurs comme
+      `40.05 | 48` ;
+    - si un fichier ETHOS est fusionné, la cohorte est définie sur le traitement
+      principal (`_source_traitement == standard`). ETHOS enrichit ensuite les
+      patients retenus, mais ne peut plus faire entrer ou sortir un patient de
+      la cohorte principale.
+    """
     out = tx.copy()
-    cim_col = tx_cols.get("cim")
-    if cim_col and cim10_text.strip():
-        raw_wanted = [c for c in re.split(r"[,;\s]+", cim10_text) if c.strip()]
-        wanted = (
-            normalize_cim10(pd.Series(raw_wanted, dtype="string"))
-            .dropna()
-            .astype(str)
-            .tolist()
-        )
-        wanted = [w for w in wanted if w]
-        norm = normalize_cim10(out[cim_col])
-        cim_mask = (
-            norm.apply(lambda v: any(str(v).startswith(w) for w in wanted))
-            if wanted
-            else pd.Series(True, index=out.index)
-        )
+
+    def _row_filter(frame: pd.DataFrame) -> pd.Series:
+        mask = pd.Series(True, index=frame.index)
+
+        cim_col = tx_cols.get("cim")
+        if cim_col and cim_col in frame.columns and str(cim10_text).strip():
+            raw_wanted = [
+                c for c in re.split(r"[,;\s]+", str(cim10_text)) if c.strip()
+            ]
+            wanted = (
+                normalize_cim10(pd.Series(raw_wanted, dtype="string"))
+                .dropna()
+                .astype(str)
+                .tolist()
+            )
+            wanted = [w for w in wanted if w]
+            mask &= _series_matches_cim10(frame[cim_col], wanted)
+
+        dose_col = tx_cols.get("dose")
+        if dose_non_nulle and dose_col and dose_col in frame.columns:
+            mask &= _dose_nonzero_mask(frame[dose_col])
+
+        return mask.fillna(False).astype(bool)
+
+    source_col = "_source_traitement"
+    has_standard_source = (
+        source_col in out.columns
+        and out[source_col].astype("string").str.lower().eq("standard").any()
+    )
+
+    # Cas fusion standard + ETHOS : le traitement principal définit la cohorte.
+    # Sans ça, les anciennes colonnes ETHOS peuvent faire entrer des patients
+    # alors que le nouveau traitement principal ne passe pas le filtre dose/CIM10.
+    if has_standard_source and "_pt_join_key" in out.columns:
+        src = out[source_col].astype("string").str.lower()
+        standard = out[src.eq("standard")].copy()
+        standard_mask = _row_filter(standard)
+
         if mode_cim10 == "CIM10 général patient":
-            keep_keys = set(out.loc[cim_mask, "_pt_join_key"].dropna())
-            out = out[out["_pt_join_key"].isin(keep_keys)].copy()
-        else:
-            out = out[cim_mask].copy()
-    if dose_non_nulle and tx_cols.get("dose") and tx_cols["dose"] in out.columns:
-        dose = pd.to_numeric(
-            out[tx_cols["dose"]].astype("string").str.replace(",", ".", regex=False),
-            errors="coerce",
-        )
-        out = out[dose.fillna(0) != 0].copy()
-    return out
+            keep_keys = set(standard.loc[standard_mask, "_pt_join_key"].dropna())
+            return out[out["_pt_join_key"].isin(keep_keys)].copy()
+
+        keep_keys = set(standard.loc[standard_mask, "_pt_join_key"].dropna())
+        keep_standard_rows = src.eq("standard") & out.index.isin(standard.index[standard_mask])
+        keep_non_standard_for_patients = (~src.eq("standard")) & out["_pt_join_key"].isin(keep_keys)
+        return out[keep_standard_rows | keep_non_standard_for_patients].copy()
+
+    # Cas simple : pas de source standard identifiée, on filtre le tableau tel quel.
+    row_mask = _row_filter(out)
+    if mode_cim10 == "CIM10 général patient" and "_pt_join_key" in out.columns:
+        keep_keys = set(out.loc[row_mask, "_pt_join_key"].dropna())
+        return out[out["_pt_join_key"].isin(keep_keys)].copy()
+    return out[row_mask].copy()
 
 
-TUMOR_DATA_KEYWORDS = [
-    "stg",
-    "stage",
-    "stad",
-    "tnm",
-    "tumor",
-    "tumour",
-    "tumeur",
-    "crit",
-    "critere",
-    "criteria",
-    "desc",
-    "description",
-    "histo",
-    "histologie",
-    "histology",
-    "grade",
-    "gleason",
-    "isup",
-    "psa",
-    "nccn",
-    "risk",
-    "risque",
-    "classification",
-    "extension",
-    "metast",
-    "m0",
-    "m1",
-    "n0",
-    "n1",
-    "t1",
-    "t2",
-    "t3",
-    "t4",
-]
+TNM_POSITIONED_RE = re.compile(r"^TNM_[1-9][0-9]*$", flags=re.IGNORECASE)
+TNM_DATE_POSITIONED_RE = re.compile(r"^Date_staged_[1-9][0-9]*$", flags=re.IGNORECASE)
+
+# Anciens champs TNM/staging à ne plus sélectionner automatiquement quand le SQL V11
+# fournit les couples TNM_n / Date_staged_n.
+LEGACY_TNM_EXPORT_KEYS = {
+    "stg_crit_desc",
+    "crit_desc",
+    "date_staged",
+    "tnm_all",
+    "tnm_actif",
+    "tnm_non_actif",
+    "tnm_non_actifs",
+    "tnm_autres",
+    "tnm_nb_lignes",
+    "tnm_nombre_lignes",
+    "tnm_multiple",
+    "base_actif",
+    "base_autres",
+    "base_cumul",
+    "tnm_cumul",
+    "stade_tumoral",
+    "stade_nodal",
+    "stade_metastase",
+    "cncr_stage",
+}
+
+
+def _tnm_position(col: str) -> int:
+    """Position de tri pour TNM_1, Date_staged_1, TNM_2, Date_staged_2, etc."""
+    m = re.search(r"_(\d+)$", str(col))
+    return int(m.group(1)) if m else 9999
 
 
 def detect_tumor_data_columns(columns: List[str]) -> List[str]:
-    """Repère les colonnes de données tumorales/stadification à conserver.
+    """Repère uniquement les nouvelles colonnes TNM V11 à conserver.
 
-    Exemple de colonnes attendues : stg_crit_desc, stg_desc, tnm, gleason,
-    grade, etc. La détection reste volontairement large mais limitée aux noms de
-    colonnes, afin d'ajouter ces informations dans la partie traitement sans
-    toucher au formulaire.
+    Le SQL V11 expose une saisie ARIA sous forme d'un couple :
+    `TNM_1` / `Date_staged_1`, puis `TNM_2` / `Date_staged_2`, etc.
+    On ne sélectionne donc plus automatiquement les anciens champs redondants
+    `stg_crit_desc`, `crit_desc`, `TNM_actif`, `Stade_Tumoral`, etc.
     """
-    detected: List[str] = []
-    for col in columns:
-        key = str(col).lower().replace(" ", "_")
-        if any(token in key for token in TUMOR_DATA_KEYWORDS):
-            detected.append(col)
-    return detected
+    tnm_cols = [c for c in columns if TNM_POSITIONED_RE.match(str(c))]
+    date_cols = [c for c in columns if TNM_DATE_POSITIONED_RE.match(str(c))]
 
+    ordered: List[str] = []
+    max_pos = max([_tnm_position(c) for c in tnm_cols + date_cols], default=0)
+    for pos in range(1, max_pos + 1):
+        for col in (f"TNM_{pos}", f"Date_staged_{pos}"):
+            if col in columns and col not in ordered:
+                ordered.append(col)
+    return ordered
+
+
+def sanitize_treatment_columns(columns: List[str], selected: List[str]) -> List[str]:
+    """Nettoie une sélection de colonnes traitement avant `st.multiselect`.
+
+    Objectifs :
+    - supprimer les colonnes demandées par un ancien profil mais absentes du nouveau SQL ;
+    - retirer les anciens champs TNM redondants ;
+    - ajouter automatiquement TNM_1/Date_staged_1... quand ils existent ;
+    - éviter les colonnes techniques `_aria_*` dans l'export utilisateur.
+    """
+    available = list(columns)
+    selected = list(selected or [])
+    out: List[str] = []
+
+    for col in selected:
+        if col not in available:
+            continue
+        key = norm_key(col)
+        if key in LEGACY_TNM_EXPORT_KEYS:
+            continue
+        if key.startswith("aria_") or str(col).startswith("_aria_"):
+            continue
+        if col not in out:
+            out.append(col)
+
+    for col in detect_tumor_data_columns(available):
+        if col not in out:
+            out.append(col)
+
+    return out
 
 def _normalized_unique_values(series: pd.Series, value_type: str = "text") -> List[str]:
     """Renvoie les valeurs uniques normalisées, stables et lisibles."""
@@ -409,7 +670,6 @@ def build_treatment_consistency_report(
     return pd.DataFrame(rows)
 
 
-@st.cache_data(show_spinner=False)
 def build_patient_base(
     cohort_tx: pd.DataFrame,
     tx_cols: Dict[str, Optional[str]],

@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
 """Fenêtres temporelles et agrégation des formulaires."""
 
+import json
 import re
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import pandas as pd
 import streamlit as st
@@ -10,8 +11,9 @@ import streamlit as st
 from utils.clean import join_nonempty_keep_order, nonempty_mask, normalize_pt_key
 from utils.load import _iter_csv_chunks_from_upload
 from utils.mapping import excel_date_string
+from utils.text import norm_key
 
-TEMPORAL_FIX_VERSION = "FINAL_2026_05_26_NO_CONFLICT_FIRST_DATE_NON_CUMUL"
+TEMPORAL_FIX_VERSION = "FINAL_2026_06_23_PERF_AND_PROFILE_DECODING"
 
 DEFAULT_AVANT_WEEKS = [71, 48, 41, 40, 37, 29, 13, 10, 8, 7, 6, 5, 4, 3, 2, 1]
 DEFAULT_PENDANT_WEEKS = [1, 2, 3, 4, 5, 6, 7]
@@ -36,6 +38,27 @@ DEFAULT_MONTH_BINS = [
 ]
 
 
+def is_binary_checkbox_code(value: Any) -> bool:
+    """Vrai pour les codes de cases à cocher de type 00100 ou 01001."""
+    if pd.isna(value):
+        return False
+    s = str(value).strip()
+    if s.lower() in {"", "nan", "<na>", "none", "na"}:
+        return False
+    s = re.sub(r"\.0+$", "", s)
+    return bool(re.fullmatch(r"[01]{2,}", s))
+
+
+def merge_binary_checkbox_codes(values: List[str]) -> str:
+    """Fusionne plusieurs codes binaires par OU logique en préservant les zéros."""
+    cleaned = [re.sub(r"\.0+$", "", str(v).strip()) for v in values]
+    width = max(len(v) for v in cleaned)
+    padded = [v.zfill(width) for v in cleaned]
+    return "".join(
+        "1" if any(v[i] == "1" for v in padded) else "0" for i in range(width)
+    )
+
+
 def parse_int_list(text: str, default: List[int]) -> List[int]:
     if not str(text).strip():
         return default
@@ -48,6 +71,201 @@ def parse_int_list(text: str, default: List[int]) -> List[int]:
         except ValueError:
             pass
     return vals or default
+
+
+def append_empty_export_columns(out: pd.DataFrame, columns: List[str]) -> pd.DataFrame:
+    """Ajoute plusieurs colonnes vides en une seule opération pandas.
+
+    Pandas émet un `PerformanceWarning: DataFrame is highly fragmented` quand
+    on ajoute des centaines de colonnes une par une avec `out[col] = ...`.
+    Ici on construit les colonnes vides en bloc puis on concatène une seule fois,
+    ce qui garde exactement le même résultat exporté mais évite la fragmentation.
+    """
+    if not columns:
+        return out
+    empty_block = pd.DataFrame({col: pd.NA for col in columns}, index=out.index)
+    return pd.concat([out, empty_block], axis=1, copy=False)
+
+
+
+def _is_truthy(value: Any) -> bool:
+    """Interprète proprement les booléens issus d'un JSON/DataFrame profil."""
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return False
+    try:
+        if pd.isna(value):
+            return False
+    except Exception:
+        pass
+    return str(value).strip().lower() in {"true", "1", "oui", "yes", "y", "vrai"}
+
+
+def _safe_json_table(value: Any) -> Dict[str, Any]:
+    """Récupère une table de décodage depuis dict ou chaîne JSON."""
+    if isinstance(value, dict):
+        return value
+    if value is None:
+        return {}
+    try:
+        if pd.isna(value):
+            return {}
+    except Exception:
+        pass
+    if isinstance(value, str) and value.strip():
+        try:
+            parsed = json.loads(value)
+            return parsed if isinstance(parsed, dict) else {}
+        except Exception:
+            return {}
+    return {}
+
+
+def _binary_code(value: Any, expected_length: Optional[int] = None) -> Optional[str]:
+    """Normalise une valeur ARIA binaire en chaîne de 0/1.
+
+    Exemples :
+    - `0100` reste `0100` ;
+    - `100.0` devient `100` ;
+    - si la longueur attendue vaut 4, `10` devient `0010`.
+
+    Cette correction par zfill est appliquée uniquement aux colonnes qui ont une
+    table de décodage active dans le profil, donc elle ne touche pas les doses.
+    """
+    if value is None:
+        return None
+    try:
+        if pd.isna(value):
+            return None
+    except Exception:
+        pass
+    raw = str(value).strip()
+    if raw.lower() in {"", "nan", "<na>", "none", "na"}:
+        return None
+    raw = re.sub(r"\.0+$", "", raw)
+    raw = re.sub(r"\s+", "", raw)
+    if not re.fullmatch(r"[01]+", raw):
+        return None
+    if expected_length and len(raw) < expected_length:
+        raw = raw.zfill(expected_length)
+    return raw
+
+
+def _entry_output(entry: Any, output_mode: str, fallback_label: str) -> Any:
+    """Convertit une entrée de table en grade ou libellé."""
+    if isinstance(entry, dict):
+        if output_mode == "grade" and "grade" in entry:
+            return entry.get("grade")
+        if "label" in entry:
+            return entry.get("label")
+        if "grade" in entry:
+            return entry.get("grade")
+    return fallback_label
+
+
+def _decode_profile_value(value: Any, table: Dict[str, Any], meta: Dict[str, Any]) -> Any:
+    """Décode une valeur formulaire selon la table portée par le profil JSON."""
+    if not table:
+        return value
+
+    decode_type = str(meta.get("type", "")).lower()
+    output_mode = str(meta.get("output", "labels")).lower()
+    if "graded" in decode_type or output_mode == "grade":
+        output_mode = "grade"
+
+    expected_length = meta.get("binary_length")
+    try:
+        expected_length = int(float(expected_length)) if expected_length not in (None, "") else None
+    except Exception:
+        expected_length = None
+
+    raw = str(value).strip() if value is not None and not pd.isna(value) else ""
+    raw_no_float = re.sub(r"\.0+$", "", raw)
+
+    # Cas direct : valeur déjà numérique/grade et table du type {"0": ..., "1": ...}
+    for key in (raw, raw_no_float):
+        if key in table:
+            return _entry_output(table[key], output_mode, key)
+
+    code = _binary_code(value, expected_length=expected_length)
+    if code is None:
+        return value
+    if set(code) == {"0"}:
+        return pd.NA
+
+    # Correspondance exacte, y compris après restauration des zéros à gauche.
+    if code in table:
+        return _entry_output(table[code], output_mode, code)
+
+    width = expected_length or max((len(str(k)) for k in table.keys()), default=len(code))
+    if len(code) != width:
+        # Dernière tentative prudente : alignement à droite si les zéros à gauche
+        # ont disparu lors de la lecture Excel/CSV.
+        code = code.zfill(width)
+        if code in table:
+            return _entry_output(table[code], output_mode, code)
+
+    # Multi-sélection : 1010 -> libellé position 1 + libellé position 3.
+    labels: List[Any] = []
+    grades: List[float] = []
+    for i, bit in enumerate(code):
+        if bit != "1":
+            continue
+        one_hot = "".join("1" if j == i else "0" for j in range(len(code)))
+        entry = table.get(one_hot)
+        if entry is None:
+            continue
+        decoded = _entry_output(entry, output_mode, one_hot)
+        if output_mode == "grade":
+            num = pd.to_numeric(pd.Series([decoded]), errors="coerce").iloc[0]
+            if pd.notna(num):
+                grades.append(float(num))
+            elif decoded not in labels:
+                labels.append(decoded)
+        elif decoded not in labels:
+            labels.append(decoded)
+
+    if output_mode == "grade" and grades:
+        max_grade = max(grades)
+        return int(max_grade) if float(max_grade).is_integer() else max_grade
+    if labels:
+        return " ; ".join(str(x) for x in labels if pd.notna(x) and str(x).strip())
+    return value
+
+
+def _decoding_meta_from_row(row: pd.Series) -> Optional[Dict[str, Any]]:
+    """Construit la config de décodage depuis une ligne du profil JSON.
+
+    Cela rend le décodage indépendant de `app.py` : dès que le profil contient
+    `Décodage actif`, `Type décodage` et `Table décodage`, `temporal.py` sait
+    appliquer la conversion avant l'agrégation.
+    """
+    if not _is_truthy(row.get("Décodage actif", False)):
+        return None
+    table = _safe_json_table(row.get("Table décodage"))
+    if not table:
+        return None
+    output = row.get("Décodage sortie", "labels")
+    dtype = row.get("Type décodage", "")
+    return {
+        "table": {str(k).strip(): v for k, v in table.items()},
+        "type": "" if pd.isna(dtype) else str(dtype),
+        "output": "labels" if pd.isna(output) else str(output),
+        "binary_length": row.get("Longueur code binaire", None),
+    }
+
+
+def decode_item_long_from_profile_row(item_long: pd.DataFrame, row: pd.Series) -> pd.DataFrame:
+    """Applique le décodage profil sur la colonne `Donnee` d'un item long."""
+    meta = _decoding_meta_from_row(row)
+    if meta is None or item_long.empty or "Donnee" not in item_long.columns:
+        return item_long
+    out = item_long.copy()
+    table = meta.pop("table")
+    out["Donnee"] = out["Donnee"].map(lambda v: _decode_profile_value(v, table, meta))
+    out = out[nonempty_mask(out["Donnee"])].copy()
+    return out
 
 
 def build_schema_for_item(
@@ -161,10 +379,7 @@ def aggregate_subset(
     val_col, date_col, delay_col = prefix, f"{prefix}_Date", f"{prefix}_Delai"
 
     if sub.empty:
-        out[val_col] = pd.NA
-        out[date_col] = pd.NA
-        out[delay_col] = pd.NA
-        return out
+        return append_empty_export_columns(out, [val_col, date_col, delay_col])
 
     sub = sub.copy()
 
@@ -213,11 +428,15 @@ def aggregate_subset(
         if not unique_vals:
             return pd.NA
 
+        # Codes binaires de cases à cocher : ne jamais convertir en nombre.
+        # Exemple : 00100 doit rester 00100, et plusieurs codes le même jour
+        # sont fusionnés par OU logique (00100 + 00001 -> 00101).
+        if all(is_binary_checkbox_code(v) for v in unique_vals):
+            return merge_binary_checkbox_codes(unique_vals)
+
         if len(unique_vals) == 1:
             one = unique_vals[0]
-            num = pd.to_numeric(
-                pd.Series([one.replace(",", ".")]), errors="coerce"
-            )
+            num = pd.to_numeric(pd.Series([one.replace(",", ".")]), errors="coerce")
             if num.notna().all():
                 val = float(num.iloc[0])
                 return str(int(val)) if val.is_integer() else str(val)
@@ -299,7 +518,20 @@ def build_generic_item_block(
     )
     schema_rows: List[Dict[str, str]] = []
     if forms_long.empty or config.empty:
-        return out.drop(columns=["_pt_join_key"], errors="ignore"), pd.DataFrame()
+        return out.drop(columns=["_pt_join_key"], errors="ignore").copy(), pd.DataFrame()
+
+    # Accès direct par item normalisé : évite de rescanner tout `forms_long`
+    # et corrige les différences invisibles de noms de colonnes
+    # (espaces finaux, espaces insécables, accents/mojibake réparables).
+    forms_work = forms_long.copy()
+    forms_work["_item_norm"] = forms_work["item"].map(norm_key)
+    forms_by_item = {
+        str(item_norm): grp.drop(columns=["_item_norm"], errors="ignore")
+        for item_norm, grp in forms_work.groupby("_item_norm", sort=False, observed=True)
+    }
+    empty_item_long = forms_long.iloc[0:0].copy()
+    max_pendant_week = max(pendant_weeks) if pendant_weeks else None
+
     for _, row in config.iterrows():
         if not bool(row.get("Inclure", True)):
             continue
@@ -311,7 +543,8 @@ def build_generic_item_block(
             "Aigu": bool(row.get("Aigu", False)),
             "Tardif": bool(row.get("Tardif", False)),
         }
-        item_long = forms_long[forms_long["item"].eq(source)].copy()
+        item_long = forms_by_item.get(norm_key(source), empty_item_long)
+        item_long = decode_item_long_from_profile_row(item_long, row)
         for r in build_schema_for_item(
             item, phases, avant_weeks, pendant_weeks, apres_weeks, month_bins
         ):
@@ -326,14 +559,14 @@ def build_generic_item_block(
                     >= item_long["startD"] - pd.Timedelta(days=5000)
                 )
                 & (item_long["DateHeure"] < item_long["startD"])
-            ].copy()
+            ]
             out = aggregate_subset(avant, out, f"{item}_CumulAnteRT", delay_reference)
             for w in avant_weeks:
                 lo = item_long["startD"] - pd.to_timedelta(7 * w, unit="D")
                 hi = item_long["startD"] - pd.to_timedelta(7 * (w - 1), unit="D")
                 sub = item_long[
                     (item_long["DateHeure"] >= lo) & (item_long["DateHeure"] < hi)
-                ].copy()
+                ]
                 out = aggregate_subset(
                     sub, out, f"{item}_AvantRT_Semaine_{w:03d}", delay_reference
                 )
@@ -341,12 +574,12 @@ def build_generic_item_block(
             aigu = item_long[
                 (item_long["DateHeure"] >= item_long["startD"])
                 & (item_long["DateHeure"] <= item_long["endD"])
-            ].copy()
+            ]
             out = aggregate_subset(aigu, out, f"{item}_CumulAigu", delay_reference)
             for w in pendant_weeks:
                 lo = item_long["startD"] + pd.to_timedelta(7 * (w - 1), unit="D")
                 hi = item_long["startD"] + pd.to_timedelta(7 * w, unit="D")
-                if w == max(pendant_weeks):
+                if max_pendant_week is not None and w == max_pendant_week:
                     sub = item_long[
                         (item_long["DateHeure"] >= lo)
                         & (item_long["DateHeure"] <= item_long["endD"])
@@ -354,12 +587,12 @@ def build_generic_item_block(
                 else:
                     sub = item_long[
                         (item_long["DateHeure"] >= lo) & (item_long["DateHeure"] < hi)
-                    ].copy()
+                    ]
                 out = aggregate_subset(
                     sub, out, f"{item}_PendantRT_Semaines_{w:03d}", delay_reference
                 )
         if phases.get("Tardif", False):
-            tardif = item_long[item_long["DateHeure"] > item_long["endD"]].copy()
+            tardif = item_long[item_long["DateHeure"] > item_long["endD"]]
             out = aggregate_subset(tardif, out, f"{item}_CumulTardif", delay_reference)
             for w in apres_weeks:
                 lo = item_long["endD"] + pd.to_timedelta(7 * (w - 1), unit="D")
@@ -368,7 +601,7 @@ def build_generic_item_block(
                     (item_long["DateHeure"] > item_long["endD"])
                     & (item_long["DateHeure"] >= lo)
                     & (item_long["DateHeure"] < hi)
-                ].copy()
+                ]
                 out = aggregate_subset(
                     sub, out, f"{item}_ApresRT_Semaine_{w:03d}", delay_reference
                 )
@@ -383,8 +616,8 @@ def build_generic_item_block(
                 )
                 sub = item_long[
                     (item_long["DateHeure"] > item_long["endD"]) & mask
-                ].copy()
+                ]
                 out = aggregate_subset(sub, out, f"{item}_{label}", delay_reference)
-    return out.drop(columns=["_pt_join_key"], errors="ignore"), pd.DataFrame(
+    return out.drop(columns=["_pt_join_key"], errors="ignore").copy(), pd.DataFrame(
         schema_rows
     )

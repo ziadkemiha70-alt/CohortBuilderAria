@@ -1,4 +1,4 @@
-
+﻿
 SET NOCOUNT ON;
 
 ------------------------------------------------------------------------
@@ -502,14 +502,14 @@ DiagPrimaire VarChar(Max),
 	
 DiagnosisType VarChar(Max),
 ICD VarChar(Max),
-cncr_stage VarChar(Max),
-crit_desc VarChar(Max),
-
-date_staged date,
-
-Stade_Tumoral VARCHAR(100),
-Stade_Nodal VARCHAR(100),
-Stade_Metastase VARCHAR(100),
+TNM_1 VARCHAR(MAX),
+Date_staged_1 DATE,
+TNM_2 VARCHAR(MAX),
+Date_staged_2 DATE,
+TNM_3 VARCHAR(MAX),
+Date_staged_3 DATE,
+TNM_4 VARCHAR(MAX),
+Date_staged_4 DATE,
 Facteur_HER2 VARCHAR(100),
 Recepteur_Estrogene VARCHAR(100),
 Recepteur_Progesterone VARCHAR(100),
@@ -544,7 +544,6 @@ cores_taken varchar(max),
 cores_taken_left varchar(max),
 cores_taken_right varchar(max),
 
-stg_crit_desc varchar(max),
 pathology_cmt varchar(max),
 nodes_cytokeratin_pos varchar(max),
 microcalc_status_typ varchar(max),
@@ -566,7 +565,16 @@ PlanSetupSer Int,
 RTPlanSer Int,
 HistologyTableName VarChar(Max),
 MobilePhone  nVarChar(Max),
-Citizenship VarChar(Max)
+Citizenship VarChar(Max),
+Adresse_1 VarChar(Max),
+Adresse_2 VarChar(Max),
+Adresse_3 VarChar(Max),
+CodePostal VarChar(Max),
+Ville VarChar(Max),
+ProvinceEtat VarChar(Max),
+PaysId VarChar(Max),
+Adresse VarChar(Max),
+AdresseMail VarChar(Max)
 
 )
 
@@ -614,17 +622,202 @@ SELECT
     STRING_AGG(CASE WHEN TypeChamp = 'AUTRE' THEN token END, ', ') AS Autre
 FROM Classified
 GROUP BY crit_desc
+),
+
+-- Positionnement robuste des lignes de stadification tumorale :
+-- Objectif V11 : une saisie TNM = une paire de colonnes TNM_n / Date_staged_n.
+-- Chaque TNM_n contient uniquement les critères saisis dans ARIA, sans base, sans date, sans stade global.
+-- Pas de ligne patient multipliée : les différentes saisies sont pivotées en colonnes.
+TumorStages_Detail AS (
+    SELECT
+        x.pt_id,
+        x.pt_stage_id,
+        x.TNM_valeur,
+        x.date_staged,
+        ROW_NUMBER() OVER (
+            PARTITION BY x.pt_id
+            ORDER BY
+                CASE WHEN x.date_staged IS NULL THEN 1 ELSE 0 END,
+                x.date_staged,
+                x.pt_stage_id
+        ) AS rn
+    FROM (
+        SELECT DISTINCT
+            s.pt_id,
+            s.pt_stage_id,
+            ISNULL(NULLIF(LTRIM(RTRIM(CONVERT(NVARCHAR(MAX), s.crit_desc))), ''), 'NA') AS TNM_valeur,
+            CAST(s.date_staged AS DATE) AS date_staged
+        FROM pt_cncr_stg s
+        WHERE s.pt_id IS NOT NULL
+          AND s.crit_desc IS NOT NULL
+    ) x
+),
+TumorStages_Pivoted AS (
+    SELECT
+        pt_id,
+        MAX(CASE WHEN rn = 1 THEN TNM_valeur END) AS TNM_1,
+        MAX(CASE WHEN rn = 1 THEN date_staged END) AS Date_staged_1,
+        MAX(CASE WHEN rn = 2 THEN TNM_valeur END) AS TNM_2,
+        MAX(CASE WHEN rn = 2 THEN date_staged END) AS Date_staged_2,
+        MAX(CASE WHEN rn = 3 THEN TNM_valeur END) AS TNM_3,
+        MAX(CASE WHEN rn = 3 THEN date_staged END) AS Date_staged_3,
+        MAX(CASE WHEN rn = 4 THEN TNM_valeur END) AS TNM_4,
+        MAX(CASE WHEN rn = 4 THEN date_staged END) AS Date_staged_4
+    FROM TumorStages_Detail
+    WHERE rn <= 4
+    GROUP BY pt_id
+),
+
+-- Adresse patient courante : une seule ligne par pt_id pour ne pas multiplier l'extraction.
+-- Source : pt_address. On sort aussi les composants séparés pour que l'adresse, la ville et le mail soient visibles dans Excel.
+PatientAddress_Current AS (
+    SELECT
+        q.pt_id,
+        q.Adresse_1,
+        q.Adresse_2,
+        q.Adresse_3,
+        q.CodePostal,
+        q.Ville,
+        q.ProvinceEtat,
+        q.PaysId,
+        q.Adresse,
+        q.AdresseMail
+    FROM (
+        SELECT
+            pa.pt_id,
+            NULLIF(LTRIM(RTRIM(CONVERT(VARCHAR(MAX), pa.address_1))), '') AS Adresse_1,
+            NULLIF(LTRIM(RTRIM(CONVERT(VARCHAR(MAX), pa.address_2))), '') AS Adresse_2,
+            NULLIF(LTRIM(RTRIM(CONVERT(VARCHAR(MAX), pa.address_3))), '') AS Adresse_3,
+            NULLIF(LTRIM(RTRIM(CONVERT(VARCHAR(MAX), pa.pc_zip))), '') AS CodePostal,
+            NULLIF(LTRIM(RTRIM(CONVERT(VARCHAR(MAX), pa.city))), '') AS Ville,
+            NULLIF(LTRIM(RTRIM(CONVERT(VARCHAR(MAX), pa.prv_state))), '') AS ProvinceEtat,
+            NULLIF(LTRIM(RTRIM(CONVERT(VARCHAR(MAX), pa.country_id))), '') AS PaysId,
+            NULLIF(
+                LTRIM(RTRIM(CONCAT_WS(', ',
+                    NULLIF(LTRIM(RTRIM(CONVERT(VARCHAR(MAX), pa.address_1))), ''),
+                    NULLIF(LTRIM(RTRIM(CONVERT(VARCHAR(MAX), pa.address_2))), ''),
+                    NULLIF(LTRIM(RTRIM(CONVERT(VARCHAR(MAX), pa.address_3))), ''),
+                    NULLIF(LTRIM(RTRIM(CONCAT(
+                        NULLIF(LTRIM(RTRIM(CONVERT(VARCHAR(MAX), pa.pc_zip))), ''),
+                        CASE
+                            WHEN NULLIF(LTRIM(RTRIM(CONVERT(VARCHAR(MAX), pa.pc_zip))), '') IS NOT NULL
+                             AND NULLIF(LTRIM(RTRIM(CONVERT(VARCHAR(MAX), pa.city))), '') IS NOT NULL THEN ' '
+                            ELSE ''
+                        END,
+                        NULLIF(LTRIM(RTRIM(CONVERT(VARCHAR(MAX), pa.city))), '')
+                    ))), ''),
+                    NULLIF(LTRIM(RTRIM(CONVERT(VARCHAR(MAX), pa.prv_state))), '')
+                ))),
+                ''
+            ) AS Adresse,
+            NULLIF(LTRIM(RTRIM(CONVERT(VARCHAR(MAX), pa.email_address))), '') AS AdresseMail,
+            ROW_NUMBER() OVER (
+                PARTITION BY pa.pt_id
+                ORDER BY
+                    CASE
+                        WHEN UPPER(LTRIM(RTRIM(CONVERT(VARCHAR(10), pa.cur_entry)))) IN ('Y', 'O', '1', 'T', 'TRUE') THEN 0
+                        ELSE 1
+                    END,
+                    pa.trans_log_tstamp DESC
+            ) AS rn
+        FROM pt_address pa
+        WHERE pa.pt_id IS NOT NULL
+    ) q
+    WHERE q.rn = 1
 )
 
 
 
 -- Insertion dans la table PatientInfo
-INSERT INTO @PatientInfo
+INSERT INTO @PatientInfo (
+    pt_id,
+    PatientId,
+    FirstName,
+    LastName,
+    Naissance,
+    PatientStatus,
+    DeathDate,
+    Age,
+    AgePrmFract,
+    Sex,
+    CourseId,
+    PlanSetupId,
+    laterality_typ,
+    laterality_desc,
+    PlannedFrac,
+    DiagnosisCode,
+    DiagPrimaire,
+    DiagnosisType,
+    ICD,
+    TNM_1,
+    Date_staged_1,
+    TNM_2,
+    Date_staged_2,
+    TNM_3,
+    Date_staged_3,
+    TNM_4,
+    Date_staged_4,
+    Facteur_HER2,
+    Recepteur_Estrogene,
+    Recepteur_Progesterone,
+    Age_Diagnostic,
+    Grade_Histologique,
+    Niveau_PSA,
+    Score_Oncologique,
+    Autres,
+    morph_cd,
+    tumor_size,
+    necrosis_status_typ,
+    ki67_status_typ,
+    ki67_pct,
+    varis_histology_cd,
+    pt_dx_id,
+    prmy_dx_id,
+    invasive_ind,
+    gleason_prmy,
+    gleason_scndy,
+    gleason_tertiary_typ,
+    gleason_total,
+    multifocal_ind,
+    cores_pos,
+    cores_pos_left,
+    cores_pos_right,
+    cores_taken,
+    cores_taken_left,
+    cores_taken_right,
+    pathology_cmt,
+    nodes_cytokeratin_pos,
+    microcalc_status_typ,
+    ece_status_typ,
+    er_status,
+    pr_status,
+    nodes_examined,
+    nodes_pos,
+    her2neu_status2_typ,
+    in_situ_cncr_ind,
+    Description,
+    PatientSer,
+    CourseSer,
+    PlanSetupSer,
+    RTPlanSer,
+    HistologyTableName,
+    MobilePhone,
+    Citizenship,
+    Adresse_1,
+    Adresse_2,
+    Adresse_3,
+    CodePostal,
+    Ville,
+    ProvinceEtat,
+    PaysId,
+    Adresse,
+    AdresseMail
+)
 SELECT DISTINCT
 	
-pt_dx_cncr.pt_id,
+COALESCE(pt_dx_cncr.pt_id, pt_dx.pt_id) AS pt_id,
 
-PatientId,
+Patient.PatientId AS PatientId,
 Patient.FirstName AS FirstName,
 Patient.LastName AS LastName,
 CAST(DateOfBirth AS DATE) AS Naissance,
@@ -648,19 +841,15 @@ diag_primaire.DiagnosisCode AS DiagPrimaire,
 Diagnosis.DiagnosisType,
 
 cls_scheme.scheme_name AS TNM,
-	
-	
 
-
-pt_cncr_stg.cncr_stage,
---pt_cncr_stg.crit_desc,
-pt_dx.stg_crit_desc,
-	
-pt_cncr_stg.date_staged,
-	
-ISNULL(Stade_T, 'NA') AS Stade_Clinique_Tumoral,
-ISNULL(Stade_N, 'NA') AS Stade_Clinique_Node,
-ISNULL(Stade_M, 'NA') AS Stade_Clinique_Metastase,
+COALESCE(TNM_POS.TNM_1, pt_dx.stg_crit_desc) AS TNM_1,
+TNM_POS.Date_staged_1 AS Date_staged_1,
+TNM_POS.TNM_2 AS TNM_2,
+TNM_POS.Date_staged_2 AS Date_staged_2,
+TNM_POS.TNM_3 AS TNM_3,
+TNM_POS.Date_staged_3 AS Date_staged_3,
+TNM_POS.TNM_4 AS TNM_4,
+TNM_POS.Date_staged_4 AS Date_staged_4,
 ISNULL(HER2, 'NA') AS Facteur_Croissance_HER2,
 ISNULL(Recepteur_Estrogene, 'NA') AS Recepteur_Estrogene,
 ISNULL(Recepteur_Progesterone, 'NA') AS Recepteur_Progesterone,
@@ -687,7 +876,6 @@ pt_dx_cncr.gleason_tertiary_typ,
 pt_dx_cncr.gleason_total,
 pt_dx_cncr.multifocal_ind,
 
---pt_dx_cncr.necrosis_status_typ,
 pt_dx_cncr.cores_pos,
 pt_dx_cncr.cores_pos_left,
 pt_dx_cncr.cores_pos_right,
@@ -695,7 +883,6 @@ pt_dx_cncr.cores_taken,
 pt_dx_cncr.cores_taken_left,
 pt_dx_cncr.cores_taken_right,
 
-pt_dx.stg_crit_desc,
 pt_dx_cncr.pathology_cmt,
 pt_dx_cncr.nodes_cytokeratin_pos,
 pt_dx_cncr.microcalc_status_typ,
@@ -718,7 +905,16 @@ PlanSession.PlanSetupSer,
 PlanSession.RTPlanSer,
 Diagnosis.HistologyTableName,
 Patient.MobilePhone,
-Patient.Citizenship
+Patient.Citizenship,
+PA.Adresse_1,
+PA.Adresse_2,
+PA.Adresse_3,
+PA.CodePostal,
+PA.Ville,
+PA.ProvinceEtat,
+PA.PaysId,
+PA.Adresse,
+PA.AdresseMail
 
 	
 FROM Patient Patient
@@ -738,9 +934,14 @@ LEFT JOIN laterality_typ ON laterality_typ.laterality_typ = pt_dx_cncr.lateralit
 LEFT JOIN icdo_morph_cd ON icdo_morph_cd.morph_cd = pt_dx_cncr.morph_cd AND icdo_morph_cd.morph_cd_seq = pt_dx_cncr.morph_cd_seq
                     AND icdo_morph_cd.behavior_cd  = pt_dx_cncr.behavior_cd 
                     AND icdo_morph_cd.cls_scheme_id = pt_dx_cncr.cls_scheme_id
-LEFT JOIN pt_cncr_stg on pt_cncr_stg.crit_desc = pt_dx.stg_crit_desc
 LEFT JOIN cls_scheme on cls_scheme.cls_scheme_id = pt_dx.cls_scheme_id
 LEFT JOIN Pivote on Pivote.crit_desc = pt_dx.stg_crit_desc
+LEFT JOIN TumorStages_Pivoted TNM_POS
+    ON TNM_POS.pt_id = pt_dx.pt_id
+
+LEFT JOIN PatientAddress_Current PA
+    ON PA.pt_id = COALESCE(pt_dx_cncr.pt_id, pt_dx.pt_id)
+
 
 LEFT JOIN (
 SELECT 
@@ -756,6 +957,9 @@ WHERE PlannedFrac > 0;
 --select * from @PatientInfo p where p.PatientId = ''
 ------------------------------------------------------------------------
 
+-- V11 final : identifiants d'origine conservés.
+-- pt_id = identifiant diagnostic/tumeur ARIA Oncology ; PatientId = identifiant patient visible ARIA.
+-- Bloc TNM : une saisie ARIA = TNM_n + Date_staged_n. Pas de base, pas de stade global, pas de T/N/M séparés.
 SELECT DISTINCT
 	DPC.pt_id,
 	DPC.PatientId,
@@ -773,6 +977,15 @@ SELECT DISTINCT
 	DPC.DeathDate,
 	DPC.MobilePhone,
 	DPC.Citizenship,
+	DPC.Adresse_1,
+	DPC.Adresse_2,
+	DPC.Adresse_3,
+	DPC.CodePostal,
+	DPC.Ville,
+	DPC.ProvinceEtat,
+	DPC.PaysId,
+	DPC.Adresse,
+	DPC.AdresseMail,
 	DPC.Age,
 	DPC.AgePrmFract,
 	DPC.CourseId,
@@ -784,15 +997,16 @@ SELECT DISTINCT
 	DPC.laterality_desc,
 	DPC.DiagnosisType,
 	DPC.ICD,
-	DPC.cncr_stage,
+	DPC.TNM_1,
+	DPC.Date_staged_1,
+	DPC.TNM_2,
+	DPC.Date_staged_2,
+	DPC.TNM_3,
+	DPC.Date_staged_3,
+	DPC.TNM_4,
+	DPC.Date_staged_4,
 	DPC.pt_dx_id,
 	DPC.prmy_dx_id,
-	DPC.stg_crit_desc,
-	DPC.crit_desc,
-	DPC.date_staged,
-	DPC.Stade_Tumoral,
-	DPC.Stade_Nodal,
-	DPC.Stade_Metastase,
 	DPC.Facteur_HER2,
 	DPC.Recepteur_Estrogene,
 	DPC.Recepteur_Progesterone,

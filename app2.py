@@ -5,9 +5,11 @@ Les fonctions de lecture, nettoyage, mapping, cohorte, temporalité, qualité,
 export et profil sont rangées dans le dossier utils/.
 """
 
+import io
 import re
+from pathlib import Path
 from time import perf_counter
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import pandas as pd
 import streamlit as st
@@ -22,6 +24,116 @@ from utils.profile import *
 from utils.quality import *
 from utils.temporal import *
 from utils.text import *
+
+try:
+    from utils.sql_extract import run_extraction_bundle, test_connection
+except Exception as _sql_extract_import_error:
+    run_extraction_bundle = None
+    test_connection = None
+    SQL_EXTRACT_IMPORT_ERROR = _sql_extract_import_error
+else:
+    SQL_EXTRACT_IMPORT_ERROR = None
+
+
+class LocalUploadedFile(io.BytesIO):
+    """Petit wrapper pour réutiliser les fonctions d'import existantes avec un fichier local.
+
+    Important : ``name`` doit contenir le chemin complet et pas seulement le nom
+    du fichier. Certaines couches de lecture/cache Streamlit peuvent réutiliser
+    ``uploaded_file.name`` comme chemin ; avec seulement ``traitement_patient.csv``,
+    l'app cherchait le fichier à la racine du projet au lieu de ``inputs/`` ou
+    ``outputs/``.
+    """
+
+    def __init__(self, path: Path):
+        self.path = Path(path).resolve()
+        super().__init__(self.path.read_bytes())
+        self.name = str(self.path)
+        self.display_name = self.path.name
+        self.size = self.path.stat().st_size
+
+
+def _resolve_data_dir(data_dir: str) -> Path:
+    """Résout le dossier d'entrée/sortie de façon robuste.
+
+    Si Streamlit est lancé depuis un autre dossier, `Path("inputs")` ou
+    `Path("outputs")` peut ne pas pointer vers le dossier placé à côté de
+    `app2.py`. On teste donc plusieurs emplacements sans modifier le workflow
+    existant.
+    """
+    raw = Path(str(data_dir).strip() or "inputs").expanduser()
+    candidates = []
+    if raw.is_absolute():
+        candidates.append(raw)
+    else:
+        app_dir = Path(__file__).resolve().parent
+        candidates.extend([Path.cwd() / raw, app_dir / raw, app_dir.parent / raw, raw])
+
+    for candidate in candidates:
+        if candidate.exists() and candidate.is_dir():
+            return candidate.resolve()
+
+    # Si le dossier n'existe pas encore, on renvoie l'emplacement le plus logique.
+    return candidates[0].resolve() if candidates else raw.resolve()
+
+
+def _find_output_file(output_dir: str, base_name: str) -> Optional[Path]:
+    root = _resolve_data_dir(output_dir)
+    for ext in (".csv", ".xlsx", ".zip"):
+        p = root / f"{base_name}{ext}"
+        if p.exists() and p.is_file():
+            return p.resolve()
+    return None
+
+
+def _wrap_output_file(path: Optional[Path]):
+    if path is None:
+        return None
+    try:
+        return LocalUploadedFile(path)
+    except Exception:
+        return None
+
+
+def _human_size(path: Optional[Path]) -> str:
+    if path is None or not path.exists():
+        return "—"
+    size = path.stat().st_size
+    for unit in ["o", "Ko", "Mo", "Go"]:
+        if size < 1024 or unit == "Go":
+            return f"{size:.1f} {unit}" if unit != "o" else f"{int(size)} {unit}"
+        size /= 1024
+    return str(path.stat().st_size)
+
+
+def _mask_secret_value(value: Any, min_len: int = 8, max_len: int = 16) -> str:
+    """Masque une valeur de connexion sans modifier la vraie valeur en mémoire."""
+    if value is None:
+        return ""
+    value_str = str(value)
+    if value_str == "":
+        return ""
+    return "•" * max(min_len, min(len(value_str), max_len))
+
+
+def _init_sql_session_defaults() -> None:
+    """Initialise une seule fois les valeurs SQL utilisées par l'onglet Import."""
+
+    db = st.secrets["database"]
+
+    defaults = {
+        "aria_sql_driver": db["driver"],
+        "aria_sql_server": db["server"],
+        "aria_sql_database": db["database"],
+        "aria_sql_username": db.get("username", ""),
+        "aria_sql_password": db.get("password", ""),
+        "aria_sql_reveal_connection": False,
+    }
+
+    for key, value in defaults.items():
+        if key not in st.session_state:
+            st.session_state[key] = value
+
 
 setup_page()
 render_header()
@@ -48,18 +160,24 @@ with st.sidebar:
         "Simple = interface courte. Expert = fenêtres temporelles et paramètres avancés."
     )
 
+# Variables d'import. Elles peuvent venir soit des fichiers inputs/, soit du mode manuel.
+treatment_file = None
+form_file = None
+ethos_file = None
+mapping_file = None
+profile_file = None
+
 with tab_import:
     st.subheader("Import des fichiers")
     st.markdown(
-        '<div class="smallnote">Charger les fichiers depuis <code>inputs/</code> et <code>conf/</code>. ',
+        '<div class="smallnote">Deux modes : lancer l’extraction SQL depuis l’application, ou utiliser les fichiers déjà générés dans <code>inputs/</code>.</div>',
         unsafe_allow_html=True,
     )
     with st.expander("Description des fichiers d’entrée", expanded=False):
         st.markdown("""
             ### `traitement_patient`
 
-            Le fichier `traitement_patient` est généré à partir de requêtes SQL réalisées
-            sur les bases ARIA/MOSAIQ. Il regroupe les informations liées aux traitements
+            Le fichier `traitement_patient` regroupe les informations liées aux traitements
             de radiothérapie et constitue la base principale de construction de la cohorte.
 
             Il peut notamment contenir les identifiants patient, les diagnostics CIM10,
@@ -71,50 +189,294 @@ with tab_import:
 
             ### `formulaire_patient`
 
-            Le fichier `formulaire_patient` est également généré à partir de requêtes SQL
-            réalisées sur les bases ARIA/MOSAIQ. Il rassemble les données issues des
-            formulaires cliniques et du suivi patient, avec une organisation centrée sur
-            les événements datés.
+            Le fichier `formulaire_patient` rassemble les données issues des formulaires
+            cliniques et du suivi patient, avec une organisation centrée sur les événements datés.
 
-            Il peut inclure des variables cliniques, des toxicités, des données
-            biologiques, des informations tumorales, des comptes-rendus structurés et des
-            éléments de suivi. Ces informations sont ensuite rapprochées de la cohorte
-            traitement afin d’enrichir l’export final.
+            Ces informations sont ensuite rapprochées de la cohorte traitement afin
+            d’enrichir l’export final.
 
             ---
 
             ### `ethos_patient`
 
-            Le fichier `ethos_patient` correspond à une extraction spécifique des
-            traitements réalisés sur la plateforme ETHOS. Son mode de production et sa
-            structure diffèrent du flux standard ARIA/MOSAIQ, ce qui justifie une
-            extraction séparée et une intégration dédiée dans l’application.
-
-            Il permet de compléter les données de traitement avec les fractions
-            effectivement délivrées, les doses administrées, les dates réelles de
-            traitement, les informations machine et certaines données techniques propres
-            au workflow ETHOS. Ces données sont consolidées avec `traitement_patient`
-            avant la construction de la cohorte.
+            Le fichier `ethos_patient` correspond à une extraction spécifique des traitements
+            réalisés sur la plateforme ETHOS. Il reste optionnel.
             """)
 
-    treatment_file = st.file_uploader(
-        "1. traitement_patient.csv/.zip/.xlsx",
-        type=["csv", "zip", "xlsx"],
-        help="Table traitement avec pt_id, CIM10, dates RT et dose.",
+    import_choice = st.radio(
+        "Mode d'import",
+        [
+            "1) Faire l'extraction SQL ici",
+            "2) Extraction déjà faite : utiliser les fichiers inputs/",
+        ],
+        horizontal=False,
+        help="Les deux modes aboutissent aux mêmes fichiers attendus : traitement_patient, formulaire_patient et ethos_patient optionnel.",
     )
-    form_file = st.file_uploader(
-        "2. formulaire_patient.csv/.zip/.xlsx",
-        type=["csv", "zip", "xlsx"],
-        help="Formulaire large avec pt_id, date_event et items.",
+
+    input_dir_value_raw = st.text_input(
+        "Dossier des fichiers d'entrée",
+        value=st.session_state.get("aria_input_dir", "inputs"),
+        help="L'app cherchera automatiquement traitement_patient.csv/.xlsx, formulaire_patient.csv/.xlsx et ethos_patient.csv/.xlsx dans ce dossier. Mets outputs si tu veux garder l'ancien fonctionnement.",
     )
-    ethos_file = st.file_uploader(
-        "3. ethos_patient.csv optionnel",
-        type=["csv", "zip", "xlsx"],
-        help=(
-            "Fichier traitement ETHOS optionnel. Il est intégré comme source traitement supplémentaire, "
-            "pas comme formulaire."
-        ),
+    input_dir_value = str(input_dir_value_raw).strip() or "inputs"
+    st.session_state["aria_input_dir"] = input_dir_value
+
+    if import_choice.startswith("1)"):
+        st.markdown("### Extraction SQL depuis Streamlit")
+        st.caption(
+            f"Cette partie est isolée : elle génère uniquement les fichiers cochés dans `{input_dir_value}/`, "
+            "puis le reste de l'app continue comme avant."
+        )
+
+        _init_sql_session_defaults()
+
+        col_sql_title, col_sql_eye = st.columns([0.82, 0.18])
+        with col_sql_title:
+            st.markdown("#### Paramètres de connexion")
+        with col_sql_eye:
+            eye_label = "👁️ Révéler" if not st.session_state["aria_sql_reveal_connection"] else "🙈 Masquer"
+            if st.button(
+                eye_label,
+                key="aria_sql_reveal_button",
+                help="Afficher ou masquer les informations de connexion SQL pour le partage d’écran.",
+            ):
+                st.session_state["aria_sql_reveal_connection"] = not st.session_state["aria_sql_reveal_connection"]
+                st.rerun()
+
+        show_sql_conn = bool(st.session_state["aria_sql_reveal_connection"])
+
+        with st.form("sql_extraction_form"):
+            col_a, col_b = st.columns(2)
+            with col_a:
+                if show_sql_conn:
+                    sql_driver = st.text_input(
+                        "Driver ODBC",
+                        value=st.session_state["aria_sql_driver"],
+                        key="aria_sql_driver_input",
+                    )
+                    sql_server = st.text_input(
+                        "Serveur SQL",
+                        value=st.session_state["aria_sql_server"],
+                        key="aria_sql_server_input",
+                    )
+                    sql_database = st.text_input(
+                        "Base de données",
+                        value=st.session_state["aria_sql_database"],
+                        key="aria_sql_database_input",
+                    )
+                    st.session_state["aria_sql_driver"] = sql_driver
+                    st.session_state["aria_sql_server"] = sql_server
+                    st.session_state["aria_sql_database"] = sql_database
+                else:
+                    st.text_input(
+                        "Driver ODBC",
+                        value=_mask_secret_value(st.session_state["aria_sql_driver"]),
+                        disabled=True,
+                        key="aria_sql_driver_masked",
+                    )
+                    st.text_input(
+                        "Serveur SQL",
+                        value=_mask_secret_value(st.session_state["aria_sql_server"]),
+                        disabled=True,
+                        key="aria_sql_server_masked",
+                    )
+                    st.text_input(
+                        "Base de données",
+                        value=_mask_secret_value(st.session_state["aria_sql_database"]),
+                        disabled=True,
+                        key="aria_sql_database_masked",
+                    )
+                    sql_driver = st.session_state["aria_sql_driver"]
+                    sql_server = st.session_state["aria_sql_server"]
+                    sql_database = st.session_state["aria_sql_database"]
+                    st.caption("Infos masquées pour le partage d’écran. Clique sur 👁️ Révéler pour les modifier.")
+
+                sql_dir = st.text_input("Dossier des scripts SQL", value="sql")
+            with col_b:
+                trusted_connection = st.checkbox("Authentification Windows", value=True)
+                trust_server_certificate = st.checkbox("TrustServerCertificate", value=True)
+                write_xlsx = st.checkbox("Générer aussi les fichiers Excel .xlsx", value=True)
+                limit_rows_raw = st.number_input(
+                    "Limiter à N lignes pour test (0 = aucune limite)",
+                    min_value=0,
+                    value=0,
+                    step=100,
+                )
+
+            username = ""
+            password = ""
+            if not trusted_connection:
+                if show_sql_conn:
+                    username = st.text_input(
+                        "Utilisateur SQL",
+                        value=st.session_state.get("aria_sql_username", ""),
+                        key="aria_sql_username_input",
+                    )
+                    password = st.text_input(
+                        "Mot de passe SQL",
+                        value=st.session_state.get("aria_sql_password", ""),
+                        type="password",
+                        key="aria_sql_password_input",
+                    )
+                    st.session_state["aria_sql_username"] = username
+                    st.session_state["aria_sql_password"] = password
+                else:
+                    st.text_input(
+                        "Utilisateur SQL",
+                        value=_mask_secret_value(st.session_state.get("aria_sql_username", "")),
+                        disabled=True,
+                        key="aria_sql_username_masked",
+                    )
+                    st.text_input(
+                        "Mot de passe SQL",
+                        value=_mask_secret_value(st.session_state.get("aria_sql_password", "")),
+                        disabled=True,
+                        type="password",
+                        key="aria_sql_password_masked",
+                    )
+                    username = st.session_state.get("aria_sql_username", "")
+                    password = st.session_state.get("aria_sql_password", "")
+
+            st.markdown("Fichiers à extraire")
+            col_ext_1, col_ext_2, col_ext_3 = st.columns(3)
+            with col_ext_1:
+                extract_traitement = st.checkbox(
+                    "traitement_patient",
+                    value=True,
+                    help="Script : sql/query_aria__strasbourg.sql",
+                )
+            with col_ext_2:
+                extract_formulaire = st.checkbox(
+                    "formulaire_patient",
+                    value=True,
+                    help="Script : sql/all_patient_formulaire.sql",
+                )
+            with col_ext_3:
+                extract_ethos = st.checkbox(
+                    "ethos_patient",
+                    value=True,
+                    help="Script : sql/all_patient_ethos.sql",
+                )
+
+            st.markdown("Scripts attendus dans le dossier SQL :")
+            st.code(
+                "query_aria__strasbourg.sql      -> traitement_patient\n"
+                "all_patient_formulaire.sql     -> formulaire_patient\n"
+                "all_patient_ethos.sql          -> ethos_patient",
+                language="text",
+            )
+
+            col_run_1, col_run_2 = st.columns(2)
+            with col_run_1:
+                test_sql = st.form_submit_button("Tester la connexion")
+            with col_run_2:
+                run_sql = st.form_submit_button("Lancer extraction sélectionnée")
+
+        common_sql_kwargs = dict(
+            driver=sql_driver,
+            server=sql_server,
+            database=sql_database,
+            trusted_connection=trusted_connection,
+            trust_server_certificate=trust_server_certificate,
+            username=username,
+            password=password,
+        )
+
+        selected_extracts = {
+            "traitement_patient": bool(extract_traitement),
+            "formulaire_patient": bool(extract_formulaire),
+            "ethos_patient": bool(extract_ethos),
+        }
+
+        if SQL_EXTRACT_IMPORT_ERROR is not None:
+            st.error(f"Module d'extraction SQL indisponible : {SQL_EXTRACT_IMPORT_ERROR}")
+        elif test_sql:
+            try:
+                assert test_connection is not None
+                st.success(test_connection(**common_sql_kwargs))
+            except Exception as exc:
+                st.error(f"Connexion SQL impossible : {exc}")
+        elif run_sql:
+            if not any(selected_extracts.values()):
+                st.warning("Coche au moins un fichier à extraire.")
+            else:
+                try:
+                    assert run_extraction_bundle is not None
+                    with st.spinner("Extraction SQL en cours..."):
+                        extraction_results = run_extraction_bundle(
+                            **common_sql_kwargs,
+                            sql_dir=sql_dir,
+                            output_dir=input_dir_value,
+                            write_xlsx=write_xlsx,
+                            limit_rows=None if int(limit_rows_raw) == 0 else int(limit_rows_raw),
+                            run_traitement=selected_extracts["traitement_patient"],
+                            run_formulaire=selected_extracts["formulaire_patient"],
+                            run_ethos=selected_extracts["ethos_patient"],
+                        )
+                    st.session_state["aria_last_sql_extraction_results"] = extraction_results
+                    st.success(
+                        "Extraction SQL terminée. Les fichiers générés sont maintenant repris automatiquement ci-dessous."
+                    )
+                except Exception as exc:
+                    st.error(f"Erreur pendant l'extraction SQL : {exc}")
+
+        if "aria_last_sql_extraction_results" in st.session_state:
+            with st.expander("Derniers logs d'extraction SQL", expanded=True):
+                logs_df = pd.DataFrame(st.session_state["aria_last_sql_extraction_results"]).astype(str)
+                st.dataframe(logs_df, use_container_width=True)
+
+    else:
+        st.markdown("### Extraction déjà faite")
+        st.caption("L'application cherche directement les fichiers avec les bons noms dans le dossier indiqué.")
+
+    # Dans les deux modes, on récupère automatiquement les fichiers d'entrée depuis inputs/ par défaut.
+    traitement_path = _find_output_file(input_dir_value, "traitement_patient")
+    formulaire_path = _find_output_file(input_dir_value, "formulaire_patient")
+    ethos_path = _find_output_file(input_dir_value, "ethos_patient")
+
+    detection_df = pd.DataFrame(
+        [
+            {"fichier attendu": "traitement_patient", "trouvé": "Oui" if traitement_path else "Non", "chemin": str(traitement_path or ""), "taille": _human_size(traitement_path)},
+            {"fichier attendu": "formulaire_patient", "trouvé": "Oui" if formulaire_path else "Non", "chemin": str(formulaire_path or ""), "taille": _human_size(formulaire_path)},
+            {"fichier attendu": "ethos_patient", "trouvé": "Oui" if ethos_path else "Non", "chemin": str(ethos_path or ""), "taille": _human_size(ethos_path)},
+        ]
     )
+    st.markdown("### Fichiers détectés")
+    st.dataframe(detection_df.astype(str), use_container_width=True)
+
+    treatment_file = _wrap_output_file(traitement_path)
+    form_file = _wrap_output_file(formulaire_path)
+    ethos_file = _wrap_output_file(ethos_path)
+
+    if treatment_file and form_file:
+        st.success("Fichiers traitement et formulaire détectés : le reste de l'application peut démarrer.")
+    else:
+        st.warning(f"Fichiers principaux incomplets dans {input_dir_value}/. Tu peux utiliser le mode manuel ci-dessous sans toucher au reste de l'app.")
+
+    with st.expander("Mode manuel / dépannage", expanded=not (treatment_file and form_file)):
+        st.caption("Fallback conservé pour ne pas casser l'ancien fonctionnement.")
+        manual_treatment_file = st.file_uploader(
+            "1. traitement_patient.csv/.zip/.xlsx",
+            type=["csv", "zip", "xlsx"],
+            help="Table traitement avec pt_id, CIM10, dates RT et dose.",
+        )
+        manual_form_file = st.file_uploader(
+            "2. formulaire_patient.csv/.zip/.xlsx",
+            type=["csv", "zip", "xlsx"],
+            help="Formulaire large avec pt_id, date_event et items.",
+        )
+        manual_ethos_file = st.file_uploader(
+            "3. ethos_patient.csv optionnel",
+            type=["csv", "zip", "xlsx"],
+            help="Fichier traitement ETHOS optionnel.",
+        )
+        if manual_treatment_file is not None:
+            treatment_file = manual_treatment_file
+        if manual_form_file is not None:
+            form_file = manual_form_file
+        if manual_ethos_file is not None:
+            ethos_file = manual_ethos_file
+
     mapping_file = st.file_uploader(
         "4. mapping.csv optionnel",
         type=["csv", "xlsx"],
@@ -265,6 +627,84 @@ recommended_treatment = [
     c for c in recommended_treatment if not (c in _seen or _seen.add(c))
 ]
 
+
+# Compatibilité profils anciens/nouveau SQL : Streamlit refuse les valeurs par défaut
+# d'un multiselect si elles ne sont pas exactement présentes dans les options.
+# On filtre donc les colonnes absentes et on tente de mapper les anciens noms
+# vers les nouveaux noms SQL lorsque c'est évident.
+def resolve_multiselect_existing_defaults(options: List[str], defaults: Any) -> List[str]:
+    if defaults is None:
+        return []
+    if isinstance(defaults, str):
+        raw_defaults = [defaults]
+    else:
+        try:
+            raw_defaults = list(defaults)
+        except TypeError:
+            raw_defaults = [defaults]
+
+    options = list(options)
+    option_set = set(options)
+    resolved: List[str] = []
+
+    alias_map = {
+        # Ancien SQL -> nouveau SQL traitement principal
+        "DiagnosisCode": ["DiagnosisCodes", "DiagnosisCode", "CIM10", "ICD"],
+        "PremiereFractionChamp": ["StartDateTime", "PremiereFractionChamp"],
+        "DerniereFractionChamp": ["LastDateTime", "DerniereFractionChamp"],
+        "DoseEffectuée2": ["Total_dose", "DoseEffectuée2", "DoseEffectuee2"],
+        "DoseEffectuee2": ["Total_dose", "DoseEffectuee2", "DoseEffectuée2"],
+        "DosesTotal2": ["Total_dose", "DosesTotal2"],
+        "NbFractionsEffectués": ["NbTreatedFrac", "NbFractionsEffectués", "NbFractionsEffectues"],
+        "NbFractionsEffectues": ["NbTreatedFrac", "NbFractionsEffectues", "NbFractionsEffectués"],
+        "DosePerFraction": ["Dose_per_fraction", "DosePerFraction"],
+        "Naissance": ["DateOfBirth", "Naissance"],
+        "Age": ["AgeAtStart", "AgeToday", "Age"],
+        "Technique": ["TechniquePrescription", "Technique"],
+        "TechniqueId": ["TechniquePrescription", "TechniqueId"],
+        "DiagPrimaire": ["DiagnosisDescriptions", "DiagPrimaire"],
+        "Description": ["DiagnosisDescriptions", "Description"],
+        "PatientStatus": ["Status", "PatientStatus"],
+        "PrescriptionTemplateName": ["PrescriptionName", "PrescriptionTemplateName"],
+        # Variantes tumorales singulier/pluriel du nouveau SQL
+        "cncr_stage": ["cncr_stages", "cncr_stage"],
+        "stg_crit_desc": ["stg_crit_descs_from_pt_dx", "stg_crit_desc"],
+        "crit_desc": ["crit_descs", "crit_desc"],
+        "date_staged": ["date_stageds", "date_staged"],
+        "tumor_size": ["tumor_sizes", "tumor_size"],
+        "ki67_pct": ["ki67_pcts", "ki67_pct"],
+        "morph_cd": ["morph_cds", "morph_cd"],
+        "invasive_ind": ["invasive_inds", "invasive_ind"],
+        "gleason_prmy": ["gleason_prmys", "gleason_prmy"],
+        "gleason_scndy": ["gleason_scndys", "gleason_scndy"],
+        "gleason_total": ["gleason_totals", "gleason_total"],
+        "multifocal_ind": ["multifocal_inds", "multifocal_ind"],
+        "HistologyTableName": ["HistologyTableNames", "HistologyTableName"],
+    }
+
+    def add_candidate(candidate: Any) -> bool:
+        if candidate is None:
+            return False
+        cand = str(candidate)
+        if cand in option_set and cand not in resolved:
+            resolved.append(cand)
+            return True
+        # Matching tolérant accents/espaces/casse via find_col_by_norm.
+        match = find_col_by_norm(options, [cand])
+        if match and match not in resolved:
+            resolved.append(match)
+            return True
+        return False
+
+    for default_col in raw_defaults:
+        if add_candidate(default_col):
+            continue
+        for alias in alias_map.get(str(default_col), []):
+            if add_candidate(alias):
+                break
+
+    return resolved
+
 # ============================================================
 # ÉTAT SESSION
 # ============================================================
@@ -274,6 +714,29 @@ if "last_result" not in st.session_state:
     st.session_state.last_result = None
 if "current_config" not in st.session_state:
     st.session_state.current_config = pd.DataFrame()
+
+
+def merge_previous_selection_state(base_config: pd.DataFrame) -> pd.DataFrame:
+    """Réinjecte les choix déjà faits dans la table de sélection.
+
+    Streamlit relance le script à chaque interaction ; cette fonction évite de
+    perdre les cases cochées, noms export et temporalités quand l'utilisateur
+    filtre/recherche sans reconstruire l'export.
+    """
+    previous = st.session_state.get("current_config")
+    if previous is None or previous.empty or base_config.empty:
+        return base_config
+    if "Colonne formulaire" not in previous.columns or "Colonne formulaire" not in base_config.columns:
+        return base_config
+
+    editable_cols = ["Inclure", "Nom export", "Cumul", "Avant RT", "Aigu", "Tardif"]
+    prev_idx = previous.drop_duplicates("Colonne formulaire").set_index("Colonne formulaire")
+    out = base_config.copy()
+    for col in editable_cols:
+        if col in prev_idx.columns and col in out.columns:
+            mask = out["Colonne formulaire"].isin(prev_idx.index)
+            out.loc[mask, col] = out.loc[mask, "Colonne formulaire"].map(prev_idx[col])
+    return out
 
 with tab_home:
     st.subheader("Vue d'ensemble")
@@ -403,7 +866,9 @@ with tab_build:
         )
     with c3:
         dose_non_nulle = st.checkbox(
-            "Dose non nulle", value=bool(profile_settings.get("dose_non_nulle", True))
+            "Dose non nulle",
+            value=bool(profile_settings.get("dose_non_nulle", True)),
+            key="dose_non_nulle_checkbox",
         )
     with c4:
         delay_reference = st.selectbox(
@@ -511,11 +976,78 @@ with tab_build:
     pendant_weeks = parse_int_list(pendant_text, DEFAULT_PENDANT_WEEKS)
     apres_weeks = parse_int_list(apres_text, DEFAULT_APRES_WEEKS)
 
+    treatment_options = [c for c in tx.columns if c != "_pt_join_key"]
+
+    # Par défaut, on garde toutes les colonnes traitement visibles, sauf les
+    # colonnes techniques/résolues qui servent uniquement aux calculs internes.
+    # Cela évite de retrouver dans l'export des colonnes comme :
+    # Aria Simu Resolved, Aria nombre fraction, Aria 2 Resolved, ou leurs
+    # équivalents techniques `_aria_*_resolved`.
+    DEFAULT_EXCLUDED_TREATMENT_COLUMN_LABELS = {
+        "Aria Simu Resolved",
+        "Aria nombre fraction",
+        "Aria 2 Resolved",
+        "_aria_patient_id_resolved",
+        "_aria_dose_resolved",
+        "_aria_nb_fractions_resolved",
+        "_aria_start_resolved",
+        "_aria_end_resolved",
+        "_aria_cim_resolved",
+    }
+    DEFAULT_EXCLUDED_TREATMENT_COLUMN_KEYS = {
+        norm_key(c) for c in DEFAULT_EXCLUDED_TREATMENT_COLUMN_LABELS
+    }
+
+    def _is_default_excluded_treatment_column(col: Any) -> bool:
+        nk = norm_key(col)
+        if nk in DEFAULT_EXCLUDED_TREATMENT_COLUMN_KEYS:
+            return True
+        # Sécurité : toutes les colonnes techniques créées par resolve_treatment_columns
+        # ont cette forme. Elles sont utiles en interne mais ne doivent pas être
+        # cochées par défaut dans les colonnes traitement exportées.
+        if nk.startswith("aria_") and nk.endswith("resolved"):
+            return True
+        return False
+
+    auto_excluded_treatment_cols = [
+        c for c in treatment_options if _is_default_excluded_treatment_column(c)
+    ]
+    auto_treatment_default = [
+        c for c in treatment_options if not _is_default_excluded_treatment_column(c)
+    ]
+
+    # Compatibilité TNM V11 : un ancien profil JSON peut encore demander des
+    # colonnes redondantes/obsolètes comme stg_crit_desc, crit_desc, TNM_actif,
+    # Stade_Tumoral, etc. Ici, on part volontairement du défaut complet
+    # traitement_patient actuel, puis sanitize_treatment_columns nettoie si besoin.
+    raw_treatment_default = resolve_multiselect_existing_defaults(
+        treatment_options, auto_treatment_default
+    )
+
+    if "sanitize_treatment_columns" in globals():
+        treatment_default = sanitize_treatment_columns(
+            treatment_options, raw_treatment_default
+        )
+    else:
+        treatment_default = raw_treatment_default
+
     treatment_cols = st.multiselect(
         "Colonnes traitement à garder",
-        options=[c for c in tx.columns if c != "_pt_join_key"],
-        default=profile_settings.get("treatment_cols", recommended_treatment),
+        options=treatment_options,
+        default=treatment_default,
+        help=(
+            "Par défaut, toutes les colonnes traitement sont cochées, sauf les colonnes "
+            "techniques/résolues Aria Simu Resolved, Aria nombre fraction, Aria 2 Resolved "
+            "et les colonnes internes `_aria_*_resolved`."
+        ),
     )
+    if auto_excluded_treatment_cols:
+        with st.expander("Colonnes traitement décochées par défaut", expanded=False):
+            st.dataframe(
+                pd.DataFrame({"Colonne exclue par défaut": auto_excluded_treatment_cols}),
+                width="stretch",
+                hide_index=True,
+            )
     cohort = filter_cohort(tx, tx_cols, cim10_text, mode_cim10, dose_non_nulle)
     patient_base = build_patient_base(cohort, tx_cols, treatment_cols)
     treatment_consistency = build_treatment_consistency_report(cohort, tx_cols)
@@ -527,15 +1059,19 @@ with tab_build:
     )
     c3.metric("Avec startD", int(patient_base["startD"].notna().sum()))
     c4.metric("Avec endD", int(patient_base["endD"].notna().sum()))
-    if not treatment_consistency.empty:
-        st.warning(
-            f"{treatment_consistency['_pt_join_key'].nunique()} patient(s) ont plusieurs valeurs distinctes "
-            "pour une dose, une date, un nombre de fractions ou une machine. "
-            "Le détail sera disponible dans le rapport qualité et le rapport preuve."
-        )
-    if tumor_treatment_cols:
-        with st.expander("Données tumorales détectées et conservées", expanded=False):
-            st.write(tumor_treatment_cols)
+    # Interface plus sobre : les alertes et listes techniques restent disponibles,
+    # mais ne prennent plus toute la place dans l'onglet Construction.
+    if (not treatment_consistency.empty) or tumor_treatment_cols:
+        with st.expander("Diagnostic cohorte", expanded=False):
+            if not treatment_consistency.empty:
+                st.warning(
+                    f"{treatment_consistency['_pt_join_key'].nunique()} patient(s) ont plusieurs valeurs distinctes "
+                    "pour une dose, une date, un nombre de fractions ou une machine. "
+                    "Le détail sera disponible dans le rapport qualité et le rapport preuve."
+                )
+            if tumor_treatment_cols:
+                st.markdown("**Données tumorales détectées et conservées**")
+                st.write(tumor_treatment_cols)
     if len(cohort) > 0 and patient_base.empty:
         st.warning(
             "Le CIM10 est présent dans traitement_patient, mais aucune clé patient exploitable n'a permis de construire une base patient."
@@ -557,22 +1093,34 @@ with tab_build:
 
     st.markdown("#### Sélection visuelle des colonnes formulaire")
     st.markdown(
-        '<div class="smallnote"><b>Score</b> = score de pertinence heuristique basé sur le nom de la colonne '
-        "(toxicité clinique, biologie, récidive, workflow, etc.). Ce n’est pas le nombre de valeurs non nulles. "
-        "Les colonnes <b>Valeurs cohorte</b> et <b>Patients cohorte</b> indiquent les données réellement présentes pour la cohorte sélectionnée.</div>",
+        '<div class="smallnote"><b>Mode rapide Streamlit</b> : l’application ne scanne plus tout le formulaire à chaque clic. '
+        "Les compteurs de valeurs par colonne sont donc désactivés par défaut et l’export relit uniquement les items sélectionnés au moment du bouton final.</div>",
         unsafe_allow_html=True,
+    )
+
+    compute_counts_now = st.checkbox(
+        "Calculer les compteurs formulaire maintenant (plus lent)",
+        value=False,
+        key="compute_form_counts_now",
+        help="Optionnel : scanne le formulaire pour remplir les colonnes Valeurs/Patients. À laisser décoché pour une interface rapide.",
     )
     cohort_keys_for_counts = (
         set(patient_base["_pt_join_key"].dropna().astype(str))
         if "_pt_join_key" in patient_base.columns
         else set()
     )
-    with st.spinner(
-        "Calcul mémoire-sûr des valeurs non vides par colonne formulaire..."
-    ):
-        counts_df = compute_form_column_stats_streaming(
-            form_file, form_candidates, cohort_keys_for_counts, chunksize=2500
+    if compute_counts_now:
+        with st.spinner(
+            "Calcul mémoire-sûr des valeurs non vides par colonne formulaire..."
+        ):
+            counts_df = compute_form_column_stats_streaming(
+                form_file, form_candidates, cohort_keys_for_counts, chunksize=2500
+            )
+    else:
+        counts_df = pd.DataFrame(
+            columns=["Colonne formulaire", "Valeurs cohorte", "Patients cohorte"]
         )
+
     counts_map_val = (
         dict(zip(counts_df["Colonne formulaire"], counts_df["Valeurs cohorte"]))
         if not counts_df.empty
@@ -786,7 +1334,26 @@ with tab_build:
                 else ("Suggestion" if inclure else "Manuel")
             )
 
-        rows.append(
+        # IMPORTANT DÉCODAGE : si la ligne vient du profil JSON, on repart de
+        # toute la ligne originale `pr` avant d'ajouter les champs d'interface.
+        # Sinon on perd les champs cachés indispensables au décodage binaire :
+        # `Décodage actif`, `Type décodage`, `Décodage sortie`,
+        # `Table décodage`, `Longueur code binaire`, etc.
+        # C'était la cause typique du retour des valeurs 1000/0100/10/01.
+        if pr is None:
+            row_out = {}
+        elif hasattr(pr, "to_dict"):
+            # pr peut être une ligne pandas Series lorsqu'elle vient directement du profil.
+            row_out = pr.to_dict()
+        elif isinstance(pr, dict):
+            # pr peut aussi déjà être un dict après matching flexible dans profile_lookup.
+            row_out = dict(pr)
+        else:
+            try:
+                row_out = dict(pr)
+            except Exception:
+                row_out = {}
+        row_out.update(
             {
                 "Inclure": inclure,
                 "Colonne formulaire": c,
@@ -800,6 +1367,7 @@ with tab_build:
                 **phases,
             }
         )
+        rows.append(row_out)
     base_config = (
         pd.DataFrame(rows)
         .sort_values(
@@ -814,6 +1382,7 @@ with tab_build:
         )
         .reset_index(drop=True)
     )
+    base_config = merge_previous_selection_state(base_config)
 
     search_select = st.text_input(
         "Filtrer la table de sélection",
@@ -834,12 +1403,41 @@ with tab_build:
 
         mask = display_config.apply(_row_match, axis=1)
         display_config = display_config[mask].copy()
+    else:
+        # Mode rapide : ne pas afficher les 1000+ colonnes du formulaire.
+        # On montre seulement les colonnes cochées/profil/suggestion/ajout manuel.
+        source_col = display_config.get("Source sélection", pd.Series("", index=display_config.index)).astype(str)
+        keep_fast = (
+            display_config.get("Inclure", False).astype(bool)
+            | source_col.isin(["Profil JSON", "Ajout manuel", "Suggestion"])
+        )
+        display_config = display_config[keep_fast].copy()
+        if display_config.empty:
+            display_config = base_config.head(80).copy()
+        st.caption(
+            "Affichage rapide : seules les colonnes sélectionnées/profil/suggestion sont affichées. "
+            "Utilise la recherche pour retrouver une autre colonne du formulaire."
+        )
+
+    st.markdown("##### 1) Sélectionner les items")
+    selection_columns = [
+        "Inclure",
+        "Colonne formulaire",
+        "Nom export",
+        "Source sélection",
+        "Valeurs cohorte",
+        "Patients cohorte",
+        "Score",
+    ]
+    display_selection = display_config[
+        [c for c in selection_columns if c in display_config.columns]
+    ].copy()
 
     edited = st.data_editor(
-        display_config,
+        display_selection,
         width="stretch",
         hide_index=True,
-        height=460,
+        height=430,
         column_config={
             "Inclure": st.column_config.CheckboxColumn("Inclure"),
             "Colonne formulaire": st.column_config.TextColumn(
@@ -847,29 +1445,23 @@ with tab_build:
             ),
             "Nom export": st.column_config.TextColumn("Nom export"),
             "Source sélection": st.column_config.TextColumn(
-                "Source sélection", disabled=True
+                "Source", disabled=True
             ),
-            "Catégorie": st.column_config.TextColumn("Catégorie", disabled=True),
-            "Pertinence": st.column_config.TextColumn("Pertinence", disabled=True),
             "Score": st.column_config.NumberColumn(
-                "Score pertinence",
+                "Score",
                 disabled=True,
-                help="Score heuristique basé sur le nom de la colonne, pas sur le nombre de valeurs.",
+                help="Score heuristique basé sur le nom de la colonne.",
             ),
             "Valeurs cohorte": st.column_config.NumberColumn(
-                "Valeurs cohorte",
+                "Valeurs",
                 disabled=True,
                 help="Nombre de cellules non vides dans le formulaire pour les patients de la cohorte.",
             ),
             "Patients cohorte": st.column_config.NumberColumn(
-                "Patients cohorte",
+                "Patients",
                 disabled=True,
                 help="Nombre de patients de la cohorte avec au moins une valeur pour cette colonne.",
             ),
-            "Cumul": st.column_config.CheckboxColumn("Cumul"),
-            "Avant RT": st.column_config.CheckboxColumn("Avant RT"),
-            "Aigu": st.column_config.CheckboxColumn("Aigu / Pendant RT"),
-            "Tardif": st.column_config.CheckboxColumn("Tardif / Après RT"),
         },
         key="selection_table",
     )
@@ -878,7 +1470,7 @@ with tab_build:
     # ne pas perdre les colonnes du profil ou les sélections déjà cochées.
     config = base_config.copy()
     if not edited.empty and "Colonne formulaire" in edited.columns:
-        editable_cols = ["Inclure", "Nom export", "Cumul", "Avant RT", "Aigu", "Tardif"]
+        editable_cols = ["Inclure", "Nom export"]
         edited_idx = edited.set_index("Colonne formulaire")
         for col in editable_cols:
             if col in edited_idx.columns:
@@ -886,6 +1478,122 @@ with tab_build:
                 config.loc[mask, col] = config.loc[mask, "Colonne formulaire"].map(
                     edited_idx[col]
                 )
+
+    included = (
+        config[config.get("Inclure", False).astype(bool)].copy()
+        if not config.empty
+        else pd.DataFrame()
+    )
+
+    st.markdown("##### 2) Sélectionner les temporalités")
+    if included.empty:
+        st.info("Sélectionne au moins un item formulaire pour régler les fenêtres temporelles.")
+    else:
+        st.caption(
+            "Les temporalités sont réglées uniquement sur les items inclus. "
+            "Les trois tableaux ci-dessous alimentent les colonnes Avant RT, Pendant RT et Après RT de l'export."
+        )
+        temporal_source = included[
+            [
+                c
+                for c in [
+                    "Colonne formulaire",
+                    "Nom export",
+                    "Valeurs cohorte",
+                    "Patients cohorte",
+                    "Avant RT",
+                    "Aigu",
+                    "Tardif",
+                ]
+                if c in included.columns
+            ]
+        ].copy()
+        temporal_source = temporal_source.sort_values(
+            ["Patients cohorte", "Nom export"], ascending=[False, True]
+        ).reset_index(drop=True)
+
+        def _apply_temporal_editor(
+            title: str,
+            phase_col: str,
+            checkbox_label: str,
+            key: str,
+            help_text: str,
+        ) -> None:
+            if phase_col not in temporal_source.columns:
+                return
+            st.markdown(f"###### {title}")
+            phase_df = temporal_source[
+                [
+                    "Colonne formulaire",
+                    "Nom export",
+                    "Patients cohorte",
+                    "Valeurs cohorte",
+                    phase_col,
+                ]
+            ].copy()
+            phase_df = phase_df.rename(columns={phase_col: checkbox_label})
+            edited_phase = st.data_editor(
+                phase_df,
+                width="stretch",
+                hide_index=True,
+                height=min(360, max(170, 38 * (len(phase_df) + 1))),
+                column_order=[
+                    checkbox_label,
+                    "Nom export",
+                    "Patients cohorte",
+                    "Valeurs cohorte",
+                    "Colonne formulaire",
+                ],
+                column_config={
+                    checkbox_label: st.column_config.CheckboxColumn(
+                        checkbox_label, help=help_text
+                    ),
+                    "Nom export": st.column_config.TextColumn("Item", disabled=True),
+                    "Colonne formulaire": st.column_config.TextColumn(
+                        "Colonne source", disabled=True
+                    ),
+                    "Patients cohorte": st.column_config.NumberColumn(
+                        "Patients", disabled=True
+                    ),
+                    "Valeurs cohorte": st.column_config.NumberColumn(
+                        "Valeurs", disabled=True
+                    ),
+                },
+                key=key,
+            )
+            if not edited_phase.empty and "Colonne formulaire" in edited_phase.columns:
+                edited_idx = edited_phase.set_index("Colonne formulaire")
+                if checkbox_label in edited_idx.columns:
+                    mask = config["Colonne formulaire"].isin(edited_idx.index)
+                    config.loc[mask, phase_col] = (
+                        config.loc[mask, "Colonne formulaire"]
+                        .map(edited_idx[checkbox_label])
+                        .fillna(False)
+                        .astype(bool)
+                    )
+
+        _apply_temporal_editor(
+            "Avant RT",
+            "Avant RT",
+            "Avant RT",
+            "temporal_avant_rt_table",
+            "Créer les colonnes CumulAnteRT et semaines AvantRT pour cet item.",
+        )
+        _apply_temporal_editor(
+            "Pendant RT",
+            "Aigu",
+            "Pendant RT",
+            "temporal_pendant_rt_table",
+            "Créer les colonnes CumulAigu et semaines PendantRT pour cet item.",
+        )
+        _apply_temporal_editor(
+            "Après RT",
+            "Tardif",
+            "Après RT",
+            "temporal_apres_rt_table",
+            "Créer les colonnes CumulTardif, semaines AprèsRT et mois tardifs pour cet item.",
+        )
+
     st.session_state.current_config = config
     included = (
         config[config.get("Inclure", False).astype(bool)].copy()
@@ -893,7 +1601,6 @@ with tab_build:
         else pd.DataFrame()
     )
 
-    st.markdown("#### Aperçu avant export")
     schema_preview_rows: List[Dict[str, str]] = []
     for _, r in included.iterrows():
         phases = {
@@ -912,16 +1619,14 @@ with tab_build:
                 DEFAULT_MONTH_BINS,
             )
         )
+
+    st.markdown("##### Résumé")
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Colonnes formulaire incluses", len(included))
-    c2.metric("Colonnes ODM prévues", len(schema_preview_rows))
+    c1.metric("Items inclus", len(included))
+    c2.metric("Colonnes export prévues", len(schema_preview_rows))
     c3.metric("Patients", int(patient_base["_pt_join_key"].nunique()))
     c4.metric("Mode", app_mode)
-    if schema_preview_rows:
-        st.dataframe(
-            pd.DataFrame(schema_preview_rows).head(80), width="stretch", hide_index=True
-        )
-    else:
+    if included.empty:
         st.warning("Aucune colonne incluse pour le moment.")
 
     build_btn = st.button(
@@ -1110,18 +1815,25 @@ with tab_build:
             proof_xlsx = workbook_bytes_proof(proof_sheets)
             final_csv = dataframe_to_csv_bytes(final)
             _mark_step("Génération fichiers", t0)
-            profile_settings_out = {
-                "export_zone": export_zone_label,
-                "mode_cim10": mode_cim10,
-                "cim10": cim10_text,
-                "dose_non_nulle": dose_non_nulle,
-                "delay_reference": delay_reference,
-                "treatment_cols": treatment_cols,
-                "avant_weeks": avant_weeks,
-                "pendant_weeks": pendant_weeks,
-                "apres_weeks": apres_weeks,
-                "deduplicate": deduplicate,
-            }
+            # IMPORTANT DÉCODAGE : on conserve les réglages du profil chargé,
+            # notamment `settings.binary_choice_decode`, avant d'écraser les
+            # paramètres pilotés par l'interface. Sans ça, un profil sauvegardé
+            # depuis Streamlit perd les tables de décodage centralisées.
+            profile_settings_out = dict(profile_settings) if isinstance(profile_settings, dict) else {}
+            profile_settings_out.update(
+                {
+                    "export_zone": export_zone_label,
+                    "mode_cim10": mode_cim10,
+                    "cim10": cim10_text,
+                    "dose_non_nulle": dose_non_nulle,
+                    "delay_reference": delay_reference,
+                    "treatment_cols": treatment_cols,
+                    "avant_weeks": avant_weeks,
+                    "pendant_weeks": pendant_weeks,
+                    "apres_weeks": apres_weeks,
+                    "deduplicate": deduplicate,
+                }
+            )
             profile_bytes = build_profile(included, profile_settings_out)
             file_names_result = export_filenames(export_zone_label)
             st.session_state.last_result = {
@@ -1149,7 +1861,8 @@ with tab_build:
         c1.metric("Patients", res["final"].shape[0])
         c2.metric("Colonnes export", res["final"].shape[1])
         c3.metric("Colonnes ODM", len(res["schema"]))
-        st.dataframe(res["final"].head(25), width="stretch")
+        with st.expander("Aperçu export final (25 premières lignes)", expanded=False):
+            st.dataframe(res["final"].head(25), width="stretch")
         if res.get("profiling") is not None and not res["profiling"].empty:
             with st.expander("Profiling simple du dernier calcul"):
                 st.dataframe(res["profiling"], width="stretch", hide_index=True)
@@ -1261,13 +1974,156 @@ with tab_profile:
         '<div class="smallnote">Un profil JSON remplace l’ancien fichier règle dans l’usage quotidien : il mémorise les colonnes incluses, leurs noms export, les phases cochées et les paramètres temporels.</div>',
         unsafe_allow_html=True,
     )
+
+    current_profile_table = st.session_state.get("current_config")
+    if current_profile_table is not None and not current_profile_table.empty:
+        current_profile_table = current_profile_table.copy()
+        st.markdown("#### Tableau complet des items formulaire")
+        st.caption(
+            "Ce tableau contient tous les items détectés dans formulaire_patient : "
+            "les items déjà cochés dans le JSON et les items non cochés. "
+            "Tu peux cocher un item ici, modifier son nom export et ses temporalités, "
+            "puis retourner dans Construction pour recalculer ou télécharger un profil JSON."
+        )
+
+        total_items = int(len(current_profile_table))
+        included_items = int(current_profile_table.get("Inclure", False).astype(bool).sum())
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Items formulaire", total_items)
+        c2.metric("Items cochés", included_items)
+        c3.metric("Items non cochés", max(total_items - included_items, 0))
+
+        profile_filter = st.text_input(
+            "Filtrer les items du formulaire",
+            value="",
+            placeholder="ex : sécheresse, récidive, dysurie, radiodermite...",
+            key="profile_items_filter",
+        )
+        profile_display = current_profile_table.copy()
+        if profile_filter.strip():
+            q_tokens = [
+                t
+                for t in re.split(r"[^a-z0-9]+", norm_display_text(profile_filter))
+                if t
+            ]
+
+            def _profile_row_match(row: pd.Series) -> bool:
+                txt = norm_display_text(" ".join([str(v) for v in row.values]))
+                return all(tok in txt for tok in q_tokens) if q_tokens else True
+
+            profile_display = profile_display[
+                profile_display.apply(_profile_row_match, axis=1)
+            ].copy()
+
+        profile_columns = [
+            "Inclure",
+            "Colonne formulaire",
+            "Nom export",
+            "Source sélection",
+            "Cumul",
+            "Avant RT",
+            "Aigu",
+            "Tardif",
+            "Valeurs cohorte",
+            "Patients cohorte",
+            "Score",
+        ]
+        profile_display = profile_display[
+            [c for c in profile_columns if c in profile_display.columns]
+        ].copy()
+
+        edited_profile_table = st.data_editor(
+            profile_display,
+            width="stretch",
+            hide_index=True,
+            height=520,
+            column_order=[c for c in profile_columns if c in profile_display.columns],
+            column_config={
+                "Inclure": st.column_config.CheckboxColumn("Inclure"),
+                "Colonne formulaire": st.column_config.TextColumn(
+                    "Colonne formulaire", disabled=True
+                ),
+                "Nom export": st.column_config.TextColumn("Nom export"),
+                "Source sélection": st.column_config.TextColumn("Source", disabled=True),
+                "Cumul": st.column_config.CheckboxColumn("Cumul"),
+                "Avant RT": st.column_config.CheckboxColumn("Avant RT"),
+                "Aigu": st.column_config.CheckboxColumn("Aigu"),
+                "Tardif": st.column_config.CheckboxColumn("Tardif"),
+                "Valeurs cohorte": st.column_config.NumberColumn("Valeurs", disabled=True),
+                "Patients cohorte": st.column_config.NumberColumn("Patients", disabled=True),
+                "Score": st.column_config.NumberColumn("Score", disabled=True),
+            },
+            key="profile_full_items_table",
+        )
+
+        # Réinjecte les modifications du tableau Profil dans la config globale.
+        # Au prochain rerun, l'onglet Construction reprend ces choix via
+        # merge_previous_selection_state().
+        full_profile_config = current_profile_table.copy()
+        if (
+            not edited_profile_table.empty
+            and "Colonne formulaire" in edited_profile_table.columns
+            and "Colonne formulaire" in full_profile_config.columns
+        ):
+            editable_profile_cols = [
+                "Inclure",
+                "Nom export",
+                "Cumul",
+                "Avant RT",
+                "Aigu",
+                "Tardif",
+            ]
+            edited_idx = edited_profile_table.set_index("Colonne formulaire")
+            for col in editable_profile_cols:
+                if col in edited_idx.columns and col in full_profile_config.columns:
+                    mask = full_profile_config["Colonne formulaire"].isin(edited_idx.index)
+                    full_profile_config.loc[mask, col] = full_profile_config.loc[
+                        mask, "Colonne formulaire"
+                    ].map(edited_idx[col])
+            st.session_state.current_config = full_profile_config
+
+        included_profile_now = full_profile_config[
+            full_profile_config.get("Inclure", False).astype(bool)
+        ].copy()
+        if not included_profile_now.empty:
+            profile_settings_table_out = (
+                dict(profile_settings) if isinstance(profile_settings, dict) else {}
+            )
+            profile_settings_table_out.update(
+                {
+                    "export_zone": export_zone_label,
+                    "mode_cim10": mode_cim10,
+                    "cim10": cim10_text,
+                    "dose_non_nulle": dose_non_nulle,
+                    "delay_reference": delay_reference,
+                    "treatment_cols": treatment_cols,
+                    "avant_weeks": avant_weeks,
+                    "pendant_weeks": pendant_weeks,
+                    "apres_weeks": apres_weeks,
+                    "deduplicate": deduplicate,
+                }
+            )
+            profile_table_bytes = build_profile(
+                included_profile_now, profile_settings_table_out
+            )
+            st.download_button(
+                "Télécharger le profil JSON depuis ce tableau",
+                profile_table_bytes,
+                export_filenames(export_zone_label)["json"],
+                "application/json",
+                key="download_profile_from_full_table",
+            )
+        else:
+            st.info("Aucun item coché dans le tableau Profil pour générer un JSON.")
+
     if not profile_config.empty:
         st.success("Profil JSON chargé comme base modifiable.")
         st.markdown(
-            "Le profil préremplit les colonnes et les phases dans l'onglet Construction, "
-            "Il y a toujours possibilité d'ajouter des colonnes à la main. Après export, le bouton `Sauvegarder profil JSON` génère un nouveau profil mis à jour."
+            "Le profil préremplit les colonnes et les phases dans l'onglet Construction. "
+            "Le tableau complet ci-dessus permet aussi d'ajouter des items du formulaire au profil."
         )
-        st.dataframe(profile_config, width="stretch", hide_index=True)
+        with st.expander("Voir le profil JSON chargé", expanded=False):
+            st.dataframe(profile_config, width="stretch", hide_index=True)
     elif st.session_state.last_result is not None:
         file_names = st.session_state.last_result.get(
             "file_names",
@@ -1281,7 +2137,7 @@ with tab_profile:
             file_names["json"],
             "application/json",
         )
-    else:
+    elif current_profile_table is None or current_profile_table.empty:
         st.info(
             "Construis un export pour générer un profil, ou charge un profil JSON dans la barre latérale."
         )

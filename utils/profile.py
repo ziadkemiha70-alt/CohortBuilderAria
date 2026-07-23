@@ -125,6 +125,128 @@ def export_filenames(zone_label: str) -> Dict[str, str]:
     }
 
 
+
+
+# DÉCODAGE PROFIL : compatibilité settings -> columns
+# ============================================================
+
+
+def _profile_truthy(value: Any) -> bool:
+    """Interprète les booléens venant d'un JSON ou d'un DataFrame pandas."""
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return False
+    try:
+        if pd.isna(value):
+            return False
+    except Exception:
+        pass
+    return str(value).strip().lower() in {"true", "1", "oui", "yes", "y", "vrai"}
+
+
+def _profile_explicit_false(value: Any) -> bool:
+    """Vrai seulement si le profil désactive explicitement le décodage."""
+    if isinstance(value, bool):
+        return value is False
+    if value is None:
+        return False
+    try:
+        if pd.isna(value):
+            return False
+    except Exception:
+        pass
+    return str(value).strip().lower() in {"false", "0", "non", "no", "n", "faux"}
+
+
+def _binary_table_length(table: Dict[str, Any]) -> Optional[int]:
+    """Déduit la longueur d'un code binaire à partir des clés de table."""
+    lengths = []
+    for key in table.keys():
+        s = str(key).strip()
+        if re.fullmatch(r"[01]{2,}", s):
+            lengths.append(len(s))
+    return max(lengths) if lengths else None
+
+
+def enrich_config_with_decoding_from_settings(
+    config: pd.DataFrame, settings: Dict[str, Any]
+) -> pd.DataFrame:
+    """Applique les règles `settings.binary_choice_decode` aux lignes `columns`.
+
+    Cette fonction garde le profil universel : aucune règle médicale n'est codée
+    en dur ici. Si le JSON contient une table de décodage centralisée dans
+    `settings.binary_choice_decode.tables`, elle est recopiée sur la ligne de la
+    colonne correspondante dans `config`, pour que `temporal.py` puisse décoder
+    l'item pendant l'agrégation.
+
+    Priorités de sécurité :
+    - ne décode rien si aucune table n'existe dans le JSON ;
+    - ne modifie pas une ligne où `Décodage actif` vaut explicitement false ;
+    - ne touche pas aux colonnes non présentes dans le profil.
+    """
+    if config is None or config.empty:
+        return config
+
+    decode_cfg = settings.get("binary_choice_decode", {})
+    if not isinstance(decode_cfg, dict) or not decode_cfg.get("enabled", True):
+        return config
+
+    tables = decode_cfg.get("tables") or decode_cfg.get("binary_choice_tables") or {}
+    meta = decode_cfg.get("meta") or {}
+    if not isinstance(tables, dict) or not tables:
+        return config
+
+    table_lookup: Dict[str, Tuple[str, Dict[str, Any]]] = {}
+    for name, table in tables.items():
+        if isinstance(table, dict) and table:
+            table_lookup.setdefault(norm_key(name), (str(name), table))
+
+    if not table_lookup:
+        return config
+
+    out = config.copy()
+    for idx, row in out.iterrows():
+        current_flag = row.get("Décodage actif", None)
+        if _profile_explicit_false(current_flag):
+            continue
+
+        candidates = [
+            row.get("Colonne formulaire", ""),
+            row.get("Nom export", ""),
+            row.get("Colonne profil originale", ""),
+        ]
+
+        match = None
+        for candidate in candidates:
+            key = norm_key(candidate)
+            if key in table_lookup:
+                match = table_lookup[key]
+                break
+        if match is None:
+            continue
+
+        table_name, table = match
+        m = meta.get(table_name, {}) if isinstance(meta, dict) else {}
+        if not isinstance(m, dict):
+            m = {}
+
+        out.at[idx, "Décodage actif"] = True
+        out.at[idx, "Type décodage"] = m.get("type", row.get("Type décodage", "binary_multiselect_id"))
+        out.at[idx, "Décodage sortie"] = m.get("output", row.get("Décodage sortie", "labels"))
+        out.at[idx, "Règle agrégation"] = m.get(
+            "aggregation", row.get("Règle agrégation", "logical_or_then_labels")
+        )
+        out.at[idx, "Table décodage"] = table
+        out.at[idx, "Longueur code binaire"] = m.get(
+            "binary_length", row.get("Longueur code binaire", _binary_table_length(table))
+        )
+        if not row.get("Source décodage") or str(row.get("Source décodage")).lower() in {"nan", "<na>"}:
+            out.at[idx, "Source décodage"] = "settings.binary_choice_decode"
+
+    return out
+
+
 def build_profile(config: pd.DataFrame, settings: Dict[str, Any]) -> bytes:
     payload = {
         "version": "ARIA_ODM_profile_v1",
@@ -151,4 +273,5 @@ def load_profile(uploaded) -> Tuple[Dict[str, Any], pd.DataFrame]:
     if payload.get("description"):
         settings.setdefault("_profile_description", payload.get("description"))
     config = pd.DataFrame(payload.get("columns", []))
+    config = enrich_config_with_decoding_from_settings(config, settings)
     return settings, config

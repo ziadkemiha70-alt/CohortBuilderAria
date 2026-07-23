@@ -1,5 +1,5 @@
 # ============================================================================
-# MODULE : tox.py
+# MODULE : toxicites.py
 # DESCRIPTION : Module de traitement des toxicités et calculs temporels
 #              Gestion des fenêtres temporelles, fusion de données et agrégation
 # ============================================================================
@@ -15,11 +15,14 @@ import platform
 import subprocess
 import os
 import re
-from numba import njit
+try:
+    from numba import njit
+except Exception:
+    njit = None
 import gc
 
-# Import des fonctions du module sys.py
-from sys import (
+# Import des fonctions utilitaires
+from utils.sql_io import (
     lire_excel_accelere,
     requete_sql,
     convert_csv_to_xlsx,
@@ -28,7 +31,7 @@ from sys import (
     save_data_excel_by_multiple_requests,
     add_columns,
     detecter_gpu_systeme,
-    installer_dependances_gpu
+    installer_dependances_gpu,
 )
 
 # ============================================================================

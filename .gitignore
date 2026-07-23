@@ -1,142 +1,16 @@
-# ============================================================
-# ARIA ODM Builder - .gitignore
-# Objectif :
-# - Ne jamais versionner les données patients ou exports locaux
-# - Garder les fichiers de configuration nécessaires au projet
-# ============================================================
+# Informations confidentielles
+.streamlit/secrets.toml
+.env
 
-
-# ------------------------------------------------------------
-# Données patients / fichiers locaux sensibles
-# ------------------------------------------------------------
+# Données et exports
 inputs/
-inputs/**
-
 outputs/
-outputs/**
 
-data/
-data/**
-
-exports/
-exports/**
-
-ARIA/
-ARIA/**
-
-
-# ------------------------------------------------------------
-# Fichiers de données ignorés par défaut
-# ------------------------------------------------------------
-*.csv
-*.tsv
-*.xlsx
-*.xls
-*.parquet
-*.feather
-*.db
-*.sqlite
-*.sqlite3
-*.zip
-*.7z
-*.rar
-
-
-# ------------------------------------------------------------
-# Exceptions : fichiers de configuration à versionner
-# IMPORTANT :
-# On réautorise d'abord le dossier conf/, puis les fichiers voulus.
-# ------------------------------------------------------------
-!conf/
-!conf/**/
-!conf/mapping.csv
-!conf/profiles/
-!conf/profiles/*.json
-
-
-# ------------------------------------------------------------
-# Environnements Python
-# ------------------------------------------------------------
+# Python
+__pycache__/
+*.pyc
 .venv/
 venv/
-env/
-ENV/
 
-
-# ------------------------------------------------------------
-# Cache Python
-# ------------------------------------------------------------
-__pycache__/
-*.py[cod]
-*$py.class
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/
-
-
-# ------------------------------------------------------------
-# Streamlit / secrets locaux
-# ------------------------------------------------------------
-.streamlit/secrets.toml
-
-
-# ------------------------------------------------------------
-# Variables d'environnement
-# ------------------------------------------------------------
-.env
-.env.*
-
-
-# ------------------------------------------------------------
-# Notebooks
-# Pour l'instant, non versionnés afin d'éviter les données sensibles
-# ------------------------------------------------------------
-notebooks/
-notebooks/**
-
-
-# ------------------------------------------------------------
-# Fichiers système / éditeurs
-# ------------------------------------------------------------
-.DS_Store
+# Windows
 Thumbs.db
-.vscode/
-.idea/
-
-
-# ------------------------------------------------------------
-# Logs et fichiers temporaires
-# ------------------------------------------------------------
-*.log
-*.tmp
-*.bak
-*.swp
-~$*
-
-
-# ------------------------------------------------------------
-# LaTeX / documentation compilée
-# ------------------------------------------------------------
-*.aux
-*.log
-*.out
-*.toc
-*.synctex.gz
-*.fls
-*.fdb_latexmk
-
-
-# ------------------------------------------------------------
-# Fichiers conservés normalement
-# ------------------------------------------------------------
-# app.py
-# requirements.txt
-# README.md
-# utils/
-# conf/mapping.csv
-# conf/profiles/*.json
-# sql/
-# scripts/
-# docs/
-# pictures/
-# .pre-commit-config.yaml

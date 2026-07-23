@@ -8,14 +8,32 @@ import pandas as pd
 import streamlit as st
 
 
+TECHNICAL_EXPORT_COLUMNS = {
+    "_aria_patient_id_resolved",
+    "_aria_dose_resolved",
+    "_aria_nb_fractions_resolved",
+    "_aria_start_resolved",
+    "_aria_end_resolved",
+    "_aria_cim_resolved",
+}
+
+
 def export_safe_df(df: pd.DataFrame) -> pd.DataFrame:
     """Prépare un DataFrame pour export sans casser les colonnes category.
 
-    Les CSV sont lus en chaînes simples pour éviter les conflits de catégories pandas. Avant export, on remplace les valeurs manquantes par la chaîne `NA`.
+    On retire aussi les colonnes techniques `_aria_*` créées uniquement pour les
+    filtres internes Streamlit. Elles ne doivent pas apparaître dans l'Excel final.
     """
     if df is None or df.empty:
         return pd.DataFrame() if df is None else df.copy()
     safe = df.copy()
+    technical_cols = [
+        c
+        for c in safe.columns
+        if c in TECHNICAL_EXPORT_COLUMNS or str(c).startswith("_aria_")
+    ]
+    if technical_cols:
+        safe = safe.drop(columns=technical_cols, errors="ignore")
     for c in safe.columns:
         if pd.api.types.is_categorical_dtype(safe[c]):
             safe[c] = safe[c].astype(object)

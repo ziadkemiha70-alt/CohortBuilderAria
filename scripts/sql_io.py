@@ -1,5 +1,5 @@
 # ============================================================================
-# MODULE : sys.py
+# MODULE : sql_io.py
 # DESCRIPTION : Module utilitaire pour la gestion des données, sauvegarde Excel,
 #              exécution SQL et accélération GPU
 # ============================================================================
@@ -15,7 +15,10 @@ import platform
 import subprocess
 import os
 import re
-from numba import njit
+try:
+    from numba import njit
+except Exception:
+    njit = None
 import gc
 
 
