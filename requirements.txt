@@ -4,3 +4,6 @@ openpyxl
 xlsxwriter
 skrub
 black
+numba
+numpy
+pyodbc
