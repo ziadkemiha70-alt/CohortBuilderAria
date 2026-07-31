@@ -403,17 +403,18 @@ def filter_cohort(
     mode_cim10: str,
     dose_non_nulle: bool,
 ) -> pd.DataFrame:
-    """Filtre la cohorte traitement.
+    """Filtre la cohorte sur l'ensemble des traitements standard et ETHOS.
 
-    Correction nouveau SQL :
+    Règles :
     - le CIM10 est recherché dans `DiagnosisCodes` comme liste de codes, pas
       comme simple chaîne ;
     - la dose non nulle accepte `Total_dose` contenant plusieurs valeurs comme
       `40.05 | 48` ;
-    - si un fichier ETHOS est fusionné, la cohorte est définie sur le traitement
-      principal (`_source_traitement == standard`). ETHOS enrichit ensuite les
-      patients retenus, mais ne peut plus faire entrer ou sortir un patient de
-      la cohorte principale.
+    - un patient présent uniquement dans `ethos_patient` peut désormais entrer
+      dans la cohorte s'il respecte les critères CIM10 et dose ;
+    - en mode « CIM10 général patient », toutes les lignes de traitement d'un
+      patient sont conservées dès qu'au moins une de ses lignes respecte les
+      critères, qu'elle provienne du traitement standard ou d'ETHOS.
     """
     out = tx.copy()
 
@@ -440,34 +441,14 @@ def filter_cohort(
 
         return mask.fillna(False).astype(bool)
 
-    source_col = "_source_traitement"
-    has_standard_source = (
-        source_col in out.columns
-        and out[source_col].astype("string").str.lower().eq("standard").any()
-    )
-
-    # Cas fusion standard + ETHOS : le traitement principal définit la cohorte.
-    # Sans ça, les anciennes colonnes ETHOS peuvent faire entrer des patients
-    # alors que le nouveau traitement principal ne passe pas le filtre dose/CIM10.
-    if has_standard_source and "_pt_join_key" in out.columns:
-        src = out[source_col].astype("string").str.lower()
-        standard = out[src.eq("standard")].copy()
-        standard_mask = _row_filter(standard)
-
-        if mode_cim10 == "CIM10 général patient":
-            keep_keys = set(standard.loc[standard_mask, "_pt_join_key"].dropna())
-            return out[out["_pt_join_key"].isin(keep_keys)].copy()
-
-        keep_keys = set(standard.loc[standard_mask, "_pt_join_key"].dropna())
-        keep_standard_rows = src.eq("standard") & out.index.isin(standard.index[standard_mask])
-        keep_non_standard_for_patients = (~src.eq("standard")) & out["_pt_join_key"].isin(keep_keys)
-        return out[keep_standard_rows | keep_non_standard_for_patients].copy()
-
-    # Cas simple : pas de source standard identifiée, on filtre le tableau tel quel.
+    # Le filtre est appliqué au tableau fusionné complet : standard + ETHOS.
+    # Ainsi, une ligne ETHOS peut à elle seule faire entrer un patient dans la cohorte.
     row_mask = _row_filter(out)
+
     if mode_cim10 == "CIM10 général patient" and "_pt_join_key" in out.columns:
         keep_keys = set(out.loc[row_mask, "_pt_join_key"].dropna())
         return out[out["_pt_join_key"].isin(keep_keys)].copy()
+
     return out[row_mask].copy()
 
 
